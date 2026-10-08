@@ -6,6 +6,7 @@ Course project repository for INFO 442 (Cooperative Software Development), Unive
 
 | Name | Role |
 | --- | --- |
+| Harry Han | Developer |
 | Jessie Zhuang | Product Designer |
 | Ling Wang | Developer |
 | Peitong Qi | Developer |
@@ -23,4 +24,4 @@ The skills and competencies used to measure each member's performance, based on 
 | Contributes to team decisions and resolves conflict respectfully | Tests and verifies that code works correctly | Evaluates designs through usability testing | Facilitates meetings and team communication |
 | Documents work so others can understand it | Estimates and breaks down development tasks | Communicates design decisions to developers | Communicates with stakeholders and verifies requirements are met |
 
-**Our roles:** Jessie Zhuang (Designer), Ling Wang (Developer), Peitong Qi (Developer), Stella Sun (PM). Everyone is also measured on the "Everyone" column.
+**Our roles:** Harry Han (Developer), Jessie Zhuang (Designer), Ling Wang (Developer), Peitong Qi (Developer), Stella Sun (PM). Everyone is also measured on the "Everyone" column.
