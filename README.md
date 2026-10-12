@@ -25,3 +25,7 @@ The skills and competencies used to measure each member's performance, based on 
 | Documents work so others can understand it | Estimates and breaks down development tasks | Communicates design decisions to developers | Communicates with stakeholders and verifies requirements are met |
 
 **Our roles:** Harry Han (Developer), Jessie Zhuang (Designer), Ling Wang (Developer), Peitong Qi (Developer), Stella Sun (PM). Everyone is also measured on the "Everyone" column.
+
+## Team Mission
+
+We help UW students find off-campus housing safely by making it easier to identify rental scams and protect their money and personal information.
