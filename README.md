@@ -28,9 +28,13 @@ The skills and competencies used to measure each member's performance, based on 
 
 ## Team Mission
 
-We help UW students find off-campus housing safely by making it easier to identify rental scams and protect their money and personal information.
+We help UW students find, borrow, and exchange everyday items within their campus community, making it easier to reuse belongings and reduce unnecessary purchases.
 
 ## Team Documentation
 
 [Team Notion Workspace](https://app.notion.com/p/INFO-442-F-Team-a6a34f64765c4ef9ae21a4f4bf14be42)
+
+## Design Specifications
+[Specifications (Notion)](https://app.notion.com/p/Specifications-3fe154ba926580988afddd9ec88309ea)
+
 
