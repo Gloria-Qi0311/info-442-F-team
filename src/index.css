@@ -1,0 +1,16 @@
+:root {
+  --purple: #4b2e83;
+  --gold: #b7a57a;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: #222;
+  background: #fff;
+}
+body { margin: 0; }
+.page { max-width: 600px; margin: 0 auto; padding: 24px 16px; }
+h1 { color: var(--purple); }
+label { display: block; margin-top: 16px; font-weight: 600; }
+input { width: 100%; box-sizing: border-box; padding: 8px; margin: 6px 0 12px; font-size: 1rem; }
+button { background: var(--purple); color: #fff; border: 0; padding: 10px 16px; border-radius: 6px; font-size: 1rem; cursor: pointer; }
+button:disabled { opacity: 0.6; }
+.ok { color: #1a7f37; }
+.error { color: #c62828; }
