@@ -24,7 +24,7 @@ npm run dev         # terminal 2 — app at http://localhost:5173
 
 ## Verifying Issue 1.1
 
-1. **App runs:** open http://localhost:5173 — the Husky Share home page loads.
+1. **App runs:** open http://localhost:5173 — the Husky Share map page loads.
 2. **DB save + retrieve (browser):** go to http://localhost:5173/dev/db-check → click **Save and read back** → a green "Saved and retrieved document …" message appears. The document is also visible in the emulator UI under `healthChecks`.
 3. **DB save + retrieve (command line):**
    ```bash
@@ -56,7 +56,7 @@ firebase.json            Firestore, Hosting and emulator config
 src/firebase.js          Firebase init; switches to emulators when VITE_USE_EMULATORS=true
 src/data/schema.js       Collection names, status values, and document shapes (from the logical data model)
 src/data/healthCheck.js  Save + read-back test used by Issue 1.1
-src/pages/               Pages (Home, DbCheck for now)
+src/pages/               Pages (Map, Manage, My Account, Post an Item, DbCheck)
 scripts/db-check.js      Command-line DB check
 ```
 
