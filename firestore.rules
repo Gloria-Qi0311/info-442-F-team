@@ -1,0 +1,62 @@
+rules_version = '2';
+
+// NF7: only signed-in, verified UW accounts can read or write app data.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isUwUser() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.matches('.*@uw[.]edu$');
+    }
+
+    // Setup check used by Issue 1.1 (DB check page / npm run test:db).
+    // Anyone may create and read small test docs; nothing else.
+    // TODO (after Issue 1.2): change to `if isUwUser()` or delete this block.
+    match /healthChecks/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(['message', 'createdAt'])
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 100;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if isUwUser();
+      allow create, update: if isUwUser() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    match /pickupAreas/{id} {
+      allow read: if isUwUser();
+      allow write: if false; // managed by the team in the console / seed script
+    }
+
+    match /listings/{id} {
+      allow read: if isUwUser();
+      allow create: if isUwUser() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Detailed rules for requests, photos, ratings and points are added in
+    // Sprint 2 (Issues 4.x–6.x). For now: signed-in UW users only.
+    match /requests/{id} {
+      allow read, write: if isUwUser();
+    }
+    match /confirmationPhotos/{id} {
+      allow read, write: if isUwUser();
+    }
+    match /ratings/{id} {
+      allow read, write: if isUwUser();
+    }
+    match /pointsRecords/{id} {
+      allow read: if isUwUser();
+      allow write: if false; // written by trusted code only (Issue 6.1)
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

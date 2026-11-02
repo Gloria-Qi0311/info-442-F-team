@@ -38,3 +38,7 @@ We help UW students find, borrow, and exchange everyday items within their campu
 [Specifications (Notion)](https://app.notion.com/p/Specifications-3fe154ba926580988afddd9ec88309ea)
 
 
+
+## Development Setup
+
+See [SETUP.md](SETUP.md) for how to run the app and connect Firebase.
