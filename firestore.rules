@@ -12,7 +12,8 @@ service cloud.firestore {
 
     // Setup check used by Issue 1.1. Keep test data behind UW verification.
     match /healthChecks/{id} {
-      allow read, create: if isUwUser()
+      allow read: if isUwUser();
+      allow create: if isUwUser()
         && request.resource.data.keys().hasOnly(['message', 'createdAt'])
         && request.resource.data.message is string
         && request.resource.data.message.size() <= 100;
