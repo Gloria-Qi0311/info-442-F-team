@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 
 const LINKS = [
   { to: '/map', label: 'Map' },
@@ -7,6 +8,18 @@ const LINKS = [
 ];
 
 export default function HomeBar() {
+  const { signOutUser } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleSignOut() {
+    try {
+      await signOutUser();
+      navigate('/verify', { replace: true });
+    } catch (error) {
+      console.error('Could not sign out:', error);
+    }
+  }
+
   return (
     <nav className="home-bar" aria-label="Main">
       {LINKS.map((link) => (
@@ -18,6 +31,9 @@ export default function HomeBar() {
           {link.label}
         </NavLink>
       ))}
+      <button type="button" className="home-bar-sign-out" onClick={handleSignOut}>
+        Sign Out
+      </button>
     </nav>
   );
 }

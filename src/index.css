@@ -54,3 +54,35 @@ button:disabled { opacity: 0.6; }
 .post-option-label.lend { background: var(--lend); color: #fff; }
 .post-option-label.sell { background: var(--sell); color: #000; }
 .post-option-label.give { background: var(--give); color: #000; }
+
+/* UW verification page (Issue 1.2) */
+.verification-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 24px 16px;
+  background: #f7f6fa;
+}
+.verification-card {
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  padding: 32px 24px;
+  background: #fff;
+  border: 1px solid #e5e1ed;
+  border-radius: 12px;
+  text-align: center;
+}
+.verification-card h1 { margin-top: 0; }
+.verification-card p { line-height: 1.5; }
+.google-sign-in { width: 100%; margin-top: 16px; }
+.verification-note { color: #666; font-size: 0.875rem; margin-top: 20px; }
+.home-bar-sign-out {
+  flex: 1;
+  border-radius: 0;
+  background: #fff;
+  color: var(--purple);
+  font-weight: 600;
+}
