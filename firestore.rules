@@ -10,12 +10,10 @@ service cloud.firestore {
         && request.auth.token.email.matches('.*@uw[.]edu$');
     }
 
-    // Setup check used by Issue 1.1 (DB check page / npm run test:db).
-    // Anyone may create and read small test docs; nothing else.
-    // TODO (after Issue 1.2): change to `if isUwUser()` or delete this block.
+    // Setup check used by Issue 1.1. Keep test data behind UW verification.
     match /healthChecks/{id} {
-      allow read: if true;
-      allow create: if request.resource.data.keys().hasOnly(['message', 'createdAt'])
+      allow read, create: if isUwUser()
+        && request.resource.data.keys().hasOnly(['message', 'createdAt'])
         && request.resource.data.message is string
         && request.resource.data.message.size() <= 100;
       allow update, delete: if false;
@@ -29,7 +27,7 @@ service cloud.firestore {
 
     match /pickupAreas/{id} {
       allow read: if isUwUser();
-      allow write: if false; // managed by the team in the console / seed script
+      allow write: if false;
     }
 
     match /listings/{id} {
@@ -38,8 +36,6 @@ service cloud.firestore {
       allow update, delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
     }
 
-    // Detailed rules for requests, photos, ratings and points are added in
-    // Sprint 2 (Issues 4.x–6.x). For now: signed-in UW users only.
     match /requests/{id} {
       allow read, write: if isUwUser();
     }
@@ -51,10 +47,9 @@ service cloud.firestore {
     }
     match /pointsRecords/{id} {
       allow read: if isUwUser();
-      allow write: if false; // written by trusted code only (Issue 6.1)
+      allow write: if false;
     }
 
-    // Everything else is closed.
     match /{document=**} {
       allow read, write: if false;
     }
