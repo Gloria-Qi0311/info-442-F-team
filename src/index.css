@@ -86,3 +86,8 @@ button:disabled { opacity: 0.6; }
   color: var(--purple);
   font-weight: 600;
 }
+
+/* Listing forms (L1, S1, G1) */
+.listing-form select { width: 100%; box-sizing: border-box; padding: 8px; margin: 6px 0 12px; font-size: 1rem; }
+.listing-form .field-error { margin: -6px 0 12px; font-size: 0.875rem; }
+.listing-submit { width: 100%; margin-top: 16px; }
