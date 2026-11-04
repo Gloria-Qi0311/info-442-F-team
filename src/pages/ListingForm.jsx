@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
+import { createListing } from '../data/listings';
 import {
   CATEGORIES,
   CONDITIONS,
@@ -9,9 +12,9 @@ import { todayString, validateListing } from '../data/listingValidation';
 
 // Lend (L1), Sell (S1), and Give (G1) forms.
 const FORM_TEXT = {
-  lend: { title: 'Lend an Item', button: 'Continue' },
-  sell: { title: 'Sell an Item', button: 'Continue' },
-  give: { title: 'Give Away an Item', button: 'Next' },
+  lend: { title: 'Lend an Item', button: 'Continue', failed: 'This item could not be listed. Please try again.' },
+  sell: { title: 'Sell an Item', button: 'Continue', failed: 'This item could not be published. Please try again.' },
+  give: { title: 'Give Away an Item', button: 'Next', failed: 'This item could not be listed. Please try again.' },
 };
 
 const EMPTY_VALUES = {
@@ -52,15 +55,34 @@ export default function ListingForm({ type }) {
   const text = FORM_TEXT[type];
   const [values, setValues] = useState(EMPTY_VALUES);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
   function setField(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     const nextErrors = validateListing(values, type);
     setErrors(nextErrors);
+    setSubmitError('');
+    if (Object.keys(nextErrors).length > 0) return;
+
+    // On failure, stay on the form and keep what was entered (L1.14–L1.16).
+    setSubmitting(true);
+    try {
+      const listingId = await createListing(type, values, user);
+      navigate(`/listings/${listingId}/confirmation`, {
+        state: { photoPreview: URL.createObjectURL(values.photo) },
+      });
+    } catch (error) {
+      console.error('Could not save listing:', error);
+      setSubmitError(text.failed);
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -154,7 +176,10 @@ export default function ListingForm({ type }) {
         />
         <FieldError message={errors.photo} />
 
-        <button type="submit" className="listing-submit">{text.button}</button>
+        {submitError && <p className="error" role="alert">{submitError}</p>}
+        <button type="submit" className="listing-submit" disabled={submitting}>
+          {submitting ? 'Saving…' : text.button}
+        </button>
       </form>
     </main>
   );

@@ -91,3 +91,7 @@ button:disabled { opacity: 0.6; }
 .listing-form select { width: 100%; box-sizing: border-box; padding: 8px; margin: 6px 0 12px; font-size: 1rem; }
 .listing-form .field-error { margin: -6px 0 12px; font-size: 0.875rem; }
 .listing-submit { width: 100%; margin-top: 16px; }
+
+/* Listing confirmation (L2, S2, G2) */
+.listing-photo { width: 100%; max-height: 320px; object-fit: cover; border-radius: 12px; }
+.listing-confirmation { margin-bottom: 24px; }

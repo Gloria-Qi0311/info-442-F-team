@@ -50,9 +50,9 @@ pickupAreas/{areaId}
   name, lat, lng
 
 listings/{listingId}
-  ownerId, type (lend|sell|give), title, description, category, condition,
-  photoUrl, price (sell only), pickupAreaId, availableFrom, availableUntil,
-  status, createdAt
+  ownerId, ownerName, type (lend|sell|give), title, description, category, condition,
+  photoUrl, price (sell only), pickupAreaId, availableFrom, availableUntil
+  (YYYY-MM-DD), timeSlot, status, createdAt
 
 requests/{requestId}
   listingId, listingType, ownerId, requesterId, status, stage,
