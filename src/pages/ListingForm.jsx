@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { createListing } from '../data/listings';
+import { checkPhotoFile, PHOTO_ERRORS, uploadListingPhoto } from '../data/photos';
 import {
   CATEGORIES,
   CONDITIONS,
@@ -57,11 +58,40 @@ export default function ListingForm({ type }) {
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState('');
   const { user } = useAuth();
   const navigate = useNavigate();
 
   function setField(field, value) {
     setValues((current) => ({ ...current, [field]: value }));
+  }
+
+  // PH1–PH3: pick a photo, check it is an image, and show a preview.
+  function handlePhotoChange(event) {
+    const file = event.target.files[0];
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview);
+    }
+
+    if (!file) {
+      setField('photo', null);
+      setPhotoPreview('');
+      return;
+    }
+
+    const photoError = checkPhotoFile(file);
+    if (photoError) {
+      // Not an image: clear the choice so it can't be submitted.
+      event.target.value = '';
+      setField('photo', null);
+      setPhotoPreview('');
+      setErrors((current) => ({ ...current, photo: photoError }));
+      return;
+    }
+
+    setField('photo', file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setErrors((current) => ({ ...current, photo: '' }));
   }
 
   async function handleSubmit(event) {
@@ -73,10 +103,22 @@ export default function ListingForm({ type }) {
 
     // On failure, stay on the form and keep what was entered (L1.14–L1.16).
     setSubmitting(true);
+
+    // PH4: upload the photo first. If it fails, show an error and keep the form.
+    let photoUrl;
     try {
-      const listingId = await createListing(type, values, user);
+      photoUrl = await uploadListingPhoto(values.photo, user.uid);
+    } catch (error) {
+      console.error('Could not upload photo:', error);
+      setSubmitError(PHOTO_ERRORS.uploadFailed);
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      const listingId = await createListing(type, values, user, photoUrl);
       navigate(`/listings/${listingId}/confirmation`, {
-        state: { photoPreview: URL.createObjectURL(values.photo) },
+        state: { photoPreview },
       });
     } catch (error) {
       console.error('Could not save listing:', error);
@@ -166,15 +208,18 @@ export default function ListingForm({ type }) {
           onChange={setField}
         />
 
-        {/* Photo upload area. Preview and upload errors are Issue #7 (PH1–PH4). */}
+        {/* Photo upload (Issue #7, PH1–PH4) */}
         <label htmlFor="photo">Photo</label>
         <input
           id="photo"
           type="file"
           accept="image/*"
-          onChange={(event) => setField('photo', event.target.files?.[0] || null)}
+          onChange={handlePhotoChange}
         />
         <FieldError message={errors.photo} />
+        {photoPreview && (
+          <img className="photo-preview" src={photoPreview} alt="Preview of the selected item" />
+        )}
 
         {submitError && <p className="error" role="alert">{submitError}</p>}
         <button type="submit" className="listing-submit" disabled={submitting}>

@@ -95,3 +95,6 @@ button:disabled { opacity: 0.6; }
 /* Listing confirmation (L2, S2, G2) */
 .listing-photo { width: 100%; max-height: 320px; object-fit: cover; border-radius: 12px; }
 .listing-confirmation { margin-bottom: 24px; }
+
+/* Photo preview (Issue #7, PH2) */
+.photo-preview { display: block; width: 100%; max-height: 240px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; }

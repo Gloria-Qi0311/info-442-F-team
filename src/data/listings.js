@@ -9,7 +9,8 @@ import { db } from '../firebase';
 import { COLLECTIONS, LISTING_STATUS } from './schema.js';
 
 // Save a new listing (L1.12, S1.16, G1.13). New listings start as Active (LS1).
-export async function createListing(type, values, owner) {
+// photoUrl comes from uploadListingPhoto in photos.js (Issue #7).
+export async function createListing(type, values, owner, photoUrl) {
   const listing = {
     ownerId: owner.uid,
     ownerName: owner.displayName || 'UW Student',
@@ -21,8 +22,7 @@ export async function createListing(type, values, owner) {
     availableFrom: values.availableFrom,
     availableUntil: values.availableUntil,
     timeSlot: values.timeSlot,
-    // Photo upload to storage is Issue #7; the URL is filled in there.
-    photoUrl: null,
+    photoUrl,
     status: LISTING_STATUS.active,
     createdAt: serverTimestamp(),
   };
