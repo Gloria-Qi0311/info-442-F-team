@@ -7,6 +7,8 @@ import Manage from './pages/Manage';
 import ManageListings from './pages/ManageListings';
 import Account from './pages/Account';
 import PostItem from './pages/PostItem';
+import ListingForm from './pages/ListingForm';
+import ListingConfirmation from './pages/ListingConfirmation';
 import Placeholder from './pages/Placeholder';
 import DbCheck from './pages/DbCheck';
 import Verification from './pages/Verification';
@@ -32,9 +34,10 @@ export default function App() {
             <Route path="/manage/:type" element={<ManageListings />} />
             <Route path="/account" element={<Account />} />
             <Route path="/post" element={<PostItem />} />
-            <Route path="/post/lend" element={<Placeholder title="Lend an Item" note={LATER} />} />
-            <Route path="/post/sell" element={<Placeholder title="Sell an Item" note={LATER} />} />
-            <Route path="/post/give" element={<Placeholder title="Give Away an Item" note={LATER} />} />
+            <Route path="/post/lend" element={<ListingForm key="lend" type="lend" />} />
+            <Route path="/post/sell" element={<ListingForm key="sell" type="sell" />} />
+            <Route path="/post/give" element={<ListingForm key="give" type="give" />} />
+            <Route path="/listings/:listingId/confirmation" element={<ListingConfirmation />} />
             <Route path="/dev/db-check" element={<DbCheck />} />
           </Route>
           <Route path="*" element={<Navigate to="/map" replace />} />
