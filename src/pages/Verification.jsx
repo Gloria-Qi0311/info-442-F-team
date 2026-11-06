@@ -43,6 +43,7 @@ export default function Verification() {
     try {
       await signInWithGoogle();
     } catch (signInError) {
+      console.error('Google sign-in failed:', signInError);
       setError(getErrorMessage(signInError));
     } finally {
       setSubmitting(false);
