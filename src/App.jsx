@@ -29,9 +29,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/map" replace />} />
             <Route path="/map" element={<MapPage />} />
             <Route path="/manage" element={<Manage />} />
-            <Route path="/manage/lend" element={<ManageListings />} />
-            <Route path="/manage/sell" element={<ManageListings />} />
-            <Route path="/manage/give" element={<ManageListings />} />
+            <Route path="/manage/:type" element={<ManageListings />} />
             <Route path="/account" element={<Account />} />
             <Route path="/post" element={<PostItem />} />
             <Route path="/post/lend" element={<Placeholder title="Lend an Item" note={LATER} />} />
