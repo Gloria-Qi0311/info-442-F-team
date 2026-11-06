@@ -19,7 +19,7 @@ function getErrorMessage(error) {
     case 'auth/network-request-failed':
       return 'A network error occurred. Check your connection and try again.';
     default:
-      return 'We could not sign you in. Please try again.';
+      return error.code ? `Sign-in failed (${error.code}). Please try again.` : `Sign-in failed: ${error.message || 'Unknown error'}`;
   }
 }
 
