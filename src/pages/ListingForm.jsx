@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { createListing } from '../data/listings';
-import { checkPhotoFile, PHOTO_ERRORS, uploadListingPhoto } from '../data/photos';
+import { checkPhotoFile, compressListingPhoto, PHOTO_ERRORS } from '../data/photos';
 import {
   CATEGORIES,
   CONDITIONS,
@@ -107,7 +107,7 @@ export default function ListingForm({ type }) {
     // PH4: upload the photo first. If it fails, show an error and keep the form.
     let photoUrl;
     try {
-      photoUrl = await uploadListingPhoto(values.photo, user.uid);
+      photoUrl = await compressListingPhoto(values.photo);
     } catch (error) {
       console.error('Could not upload photo:', error);
       setSubmitError(PHOTO_ERRORS.uploadFailed);

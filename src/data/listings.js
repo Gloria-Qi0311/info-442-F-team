@@ -9,7 +9,7 @@ import { db } from '../firebase';
 import { COLLECTIONS, LISTING_STATUS } from './schema.js';
 
 // Save a new listing (L1.12, S1.16, G1.13). New listings start as Active (LS1).
-// photoUrl comes from uploadListingPhoto in photos.js (Issue #7).
+// photoUrl is the compressed photo from compressListingPhoto in photos.js (Issue #7).
 export async function createListing(type, values, owner, photoUrl) {
   const listing = {
     ownerId: owner.uid,
