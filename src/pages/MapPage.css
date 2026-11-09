@@ -1,0 +1,9 @@
+/* Campus map (Issue 3.1) */
+.map-legend { list-style: none; display: flex; gap: 16px; padding: 0; margin: 0 0 12px; }
+.map-legend li { display: flex; align-items: center; gap: 6px; }
+.map-legend-dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #1f1f1f; display: inline-block; }
+.map-status { color: #555; margin: 0 0 8px; }
+.map-frame { height: calc(100vh - var(--home-bar-height) - 170px); min-height: 360px; border-radius: 12px; overflow: hidden; }
+.campus-map { height: 100%; width: 100%; }
+/* keep the "+" button above the map */
+.map-page .post-button { z-index: 1000; }
