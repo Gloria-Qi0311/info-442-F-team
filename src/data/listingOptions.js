@@ -13,15 +13,16 @@ export const CATEGORIES = [
 
 export const CONDITIONS = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
 
+// lat/lng place each area's marker on the campus map (Issue 3.1).
 export const PICKUP_AREAS = [
-  { id: 'red-square', name: 'Red Square' },
-  { id: 'hub', name: 'HUB' },
-  { id: 'suzzallo', name: 'Suzzallo Library' },
-  { id: 'odegaard', name: 'Odegaard Library' },
-  { id: 'ima', name: 'IMA' },
-  { id: 'west-campus', name: 'West Campus' },
-  { id: 'north-campus', name: 'North Campus' },
-  { id: 'the-ave', name: 'The Ave' },
+  { id: 'red-square', name: 'Red Square', lat: 47.6560, lng: -122.3095 },
+  { id: 'hub', name: 'HUB', lat: 47.6553, lng: -122.3051 },
+  { id: 'suzzallo', name: 'Suzzallo Library', lat: 47.6557, lng: -122.3083 },
+  { id: 'odegaard', name: 'Odegaard Library', lat: 47.6565, lng: -122.3104 },
+  { id: 'ima', name: 'IMA', lat: 47.6538, lng: -122.3015 },
+  { id: 'west-campus', name: 'West Campus', lat: 47.6567, lng: -122.3157 },
+  { id: 'north-campus', name: 'North Campus', lat: 47.6593, lng: -122.3040 },
+  { id: 'the-ave', name: 'The Ave', lat: 47.6614, lng: -122.3132 },
 ];
 
 export const TIME_SLOTS = [
