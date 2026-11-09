@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CircleMarker, MapContainer, Popup, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { getMapListings } from '../data/listings';
+import { getMapListings, getOwnerPoints } from '../data/listings';
 import { PICKUP_AREAS } from '../data/listingOptions';
 import './MapPage.css';
 
 // Issue 3.1: campus map with a marker for each active listing (F2.1–F2.3, LS2–LS3, NF1).
+// Issue #11: keyword search and Borrow / Buy / Free filters (F2.4–F2.11, P5, NF2).
 
 // Start zoomed so every pickup area fits on screen.
 const CAMPUS_BOUNDS = PICKUP_AREAS.map((area) => [area.lat, area.lng]);
@@ -54,6 +55,10 @@ export default function MapPage() {
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [ownerPoints, setOwnerPoints] = useState({});
+  const [category, setCategory] = useState(null);
+  const [searchText, setSearchText] = useState('');
+  const [keyword, setKeyword] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +67,12 @@ export default function MapPage() {
         if (!cancelled) {
           setListings(result);
         }
+        // Owner points are only used to order search results (P5).
+        return getOwnerPoints(result.map((listing) => listing.ownerId)).then((points) => {
+          if (!cancelled) {
+            setOwnerPoints(points);
+          }
+        });
       })
       .catch((err) => {
         console.error('Could not load listings for the map:', err);
@@ -79,7 +90,30 @@ export default function MapPage() {
     };
   }, []);
 
-  const markers = buildMarkers(listings);
+  // F2.4–F2.7: clicking the selected category again deselects it.
+  function toggleCategory(type) {
+    setCategory((current) => (current === type ? null : type));
+  }
+
+  function handleSearch(event) {
+    event.preventDefault();
+    setKeyword(searchText.trim());
+  }
+
+  // F2.8, F2.10: item name contains the keyword (ignoring case) and matches the category.
+  const lowerKeyword = keyword.toLowerCase();
+  const filtered = listings.filter(
+    (listing) =>
+      (!category || listing.type === category) &&
+      (!lowerKeyword || (listing.title || '').toLowerCase().includes(lowerKeyword)),
+  );
+  const markers = buildMarkers(filtered);
+
+  // F2.9, P5: results list ordered by the owner's total points, highest first.
+  const results = keyword
+    ? [...filtered].sort((a, b) => (ownerPoints[b.ownerId] || 0) - (ownerPoints[a.ownerId] || 0))
+    : [];
+  const filtering = Boolean(category || keyword);
 
   return (
     <main className="page map-page">
@@ -94,10 +128,39 @@ export default function MapPage() {
         ))}
       </ul>
 
+      <form className="map-search" onSubmit={handleSearch} role="search">
+        <input
+          type="search"
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder="Search items"
+          aria-label="Search items by name"
+        />
+        <button type="submit">Search</button>
+      </form>
+
+      <div className="map-filters" role="group" aria-label="Filter by category">
+        {Object.keys(TYPE_STYLES).map((type) => (
+          <button
+            key={type}
+            type="button"
+            className={category === type ? 'map-filter selected' : 'map-filter'}
+            aria-pressed={category === type}
+            onClick={() => toggleCategory(type)}
+          >
+            {TYPE_STYLES[type].label}
+          </button>
+        ))}
+      </div>
+
       {loading && <p className="map-status">Loading items…</p>}
       {error && <p className="error" role="alert">{error}</p>}
-      {!loading && !error && markers.length === 0 && (
+      {!loading && !error && listings.length === 0 && (
         <p className="map-status">No items are available right now.</p>
+      )}
+      {/* F2.11 */}
+      {!loading && !error && listings.length > 0 && filtering && filtered.length === 0 && (
+        <p className="map-status">No items found</p>
       )}
 
       <div className="map-frame">
@@ -136,6 +199,21 @@ export default function MapPage() {
           })}
         </MapContainer>
       </div>
+
+      {results.length > 0 && (
+        <ul className="map-results" aria-label="Search results">
+          {results.map((listing) => (
+            <li key={listing.id}>
+              <Link to={`/listings/${listing.id}`}>{listing.title}</Link>
+              <span className="map-results-meta">
+                {' · '}
+                {(TYPE_STYLES[listing.type] || TYPE_STYLES.lend).label}
+                {listing.type === 'sell' && listing.price != null && ` · $${listing.price}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <Link to="/post" className="post-button" aria-label="Post Items" title="Post Items">
         +

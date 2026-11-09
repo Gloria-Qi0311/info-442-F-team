@@ -69,3 +69,16 @@ export async function getMapListings() {
   });
   return listings;
 }
+
+// Loads each owner's total points so search results can be ordered (P5).
+// Owners without a user document count as 0 points.
+export async function getOwnerPoints(ownerIds) {
+  const points = {};
+  await Promise.all(
+    [...new Set(ownerIds)].map(async (uid) => {
+      const snap = await getDoc(doc(db, COLLECTIONS.users, uid));
+      points[uid] = snap.exists() ? Number(snap.data().totalPoints) || 0 : 0;
+    }),
+  );
+  return points;
+}
