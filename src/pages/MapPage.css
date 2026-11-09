@@ -7,3 +7,13 @@
 .campus-map { height: 100%; width: 100%; }
 /* keep the "+" button above the map */
 .map-page .post-button { z-index: 1000; }
+/* Search and category filters (Issue #11) */
+.map-search { display: flex; gap: 8px; margin: 0 0 8px; }
+.map-search input { margin: 0; }
+.map-filters { display: flex; gap: 8px; margin: 0 0 12px; }
+.map-filter { background: #fff; color: #333; border: 1px solid #bbb; padding: 6px 14px; border-radius: 999px; }
+.map-filter.selected { background: var(--purple); color: #fff; border-color: var(--purple); }
+.map-results { list-style: none; padding: 0; margin: 12px 0 0; }
+.map-results li { padding: 8px 0; border-bottom: 1px solid #eee; }
+.map-results a { color: var(--purple); font-weight: 600; }
+.map-results-meta { color: #555; }
