@@ -31,6 +31,6 @@ export const TIME_SLOTS = [
   'Evening (5pm–9pm)',
 ];
 
-export function pickupAreaName(id) {
-  return PICKUP_AREAS.find((area) => area.id === id)?.name || id;
+export function pickupAreaName(id, areas = PICKUP_AREAS) {
+  return areas.find((area) => area.id === id)?.name || id;
 }

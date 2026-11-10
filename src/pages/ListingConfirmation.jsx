@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { getListing } from '../data/listings';
 import { pickupAreaName } from '../data/listingOptions';
+import { usePickupAreas } from '../data/pickupAreas';
 
 // Confirmation pages L2, S2, and G2.
 const CONFIRM_TEXT = {
@@ -13,6 +14,7 @@ const CONFIRM_TEXT = {
 export default function ListingConfirmation() {
   const { listingId } = useParams();
   const location = useLocation();
+  const pickupAreas = usePickupAreas();
   const [listing, setListing] = useState(null);
   const [error, setError] = useState('');
 
@@ -60,7 +62,7 @@ export default function ListingConfirmation() {
           <dt>{text.ownerLabel}</dt>
           <dd>{listing.ownerName}</dd>
           <dt>Pickup area</dt>
-          <dd>{pickupAreaName(listing.pickupAreaId)}</dd>
+          <dd>{pickupAreaName(listing.pickupAreaId, pickupAreas)}</dd>
           <dt>Available start date</dt>
           <dd>{listing.availableFrom}</dd>
           <dt>Available end date</dt>

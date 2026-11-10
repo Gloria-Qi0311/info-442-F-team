@@ -6,9 +6,9 @@ import { checkPhotoFile, PHOTO_ERRORS, uploadListingPhoto } from '../data/photos
 import {
   CATEGORIES,
   CONDITIONS,
-  PICKUP_AREAS,
   TIME_SLOTS,
 } from '../data/listingOptions';
+import { usePickupAreas } from '../data/pickupAreas';
 import { todayString, validateListing } from '../data/listingValidation';
 
 // Lend (L1), Sell (S1), and Give (G1) forms.
@@ -54,6 +54,7 @@ const toOptions = (list) => list.map((item) => ({ value: item, label: item }));
 
 export default function ListingForm({ type }) {
   const text = FORM_TEXT[type];
+  const pickupAreas = usePickupAreas();
   const [values, setValues] = useState(EMPTY_VALUES);
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState('');
@@ -174,7 +175,7 @@ export default function ListingForm({ type }) {
           id="pickupAreaId"
           label="Pickup area"
           value={values.pickupAreaId}
-          options={PICKUP_AREAS.map((area) => ({ value: area.id, label: area.name }))}
+          options={pickupAreas.map((area) => ({ value: area.id, label: area.name }))}
           error={errors.pickupAreaId}
           onChange={setField}
         />

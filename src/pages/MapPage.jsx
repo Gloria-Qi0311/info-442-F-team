@@ -4,6 +4,7 @@ import { CircleMarker, MapContainer, Popup, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getMapListings, getOwnerPoints } from '../data/listings';
 import { PICKUP_AREAS } from '../data/listingOptions';
+import { usePickupAreas } from '../data/pickupAreas';
 import './MapPage.css';
 
 // Issue 3.1: campus map with a marker for each active listing (F2.1–F2.3, LS2–LS3, NF1).
@@ -32,7 +33,7 @@ function markerPosition(area, indexInArea, countInArea) {
 
 // Pairs each listing with its map position. Listings whose pickup area is
 // unknown are left off the map.
-function buildMarkers(listings) {
+function buildMarkers(listings, areas) {
   const byArea = {};
   listings.forEach((listing) => {
     if (!byArea[listing.pickupAreaId]) {
@@ -42,7 +43,7 @@ function buildMarkers(listings) {
   });
 
   const markers = [];
-  PICKUP_AREAS.forEach((area) => {
+  areas.forEach((area) => {
     const inArea = byArea[area.id] || [];
     inArea.forEach((listing, i) => {
       markers.push({ listing, area, position: markerPosition(area, i, inArea.length) });
@@ -52,6 +53,7 @@ function buildMarkers(listings) {
 }
 
 export default function MapPage() {
+  const pickupAreas = usePickupAreas();
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -107,7 +109,7 @@ export default function MapPage() {
       (!category || listing.type === category) &&
       (!lowerKeyword || (listing.title || '').toLowerCase().includes(lowerKeyword)),
   );
-  const markers = buildMarkers(filtered);
+  const markers = buildMarkers(filtered, pickupAreas);
 
   // F2.9, P5: results list ordered by the owner's total points, highest first.
   const results = keyword
