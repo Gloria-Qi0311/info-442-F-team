@@ -22,6 +22,7 @@ button:disabled { opacity: 0.6; }
 .home-bar {
   position: fixed; left: 0; right: 0; bottom: 0; height: var(--home-bar-height);
   display: flex; background: #fff; border-top: 1px solid #ddd;
+  z-index: 1100; /* stay above the Leaflet map */
 }
 .home-bar-link {
   flex: 1; display: flex; align-items: center; justify-content: center;
@@ -79,13 +80,7 @@ button:disabled { opacity: 0.6; }
 .verification-card p { line-height: 1.5; }
 .google-sign-in { width: 100%; margin-top: 16px; }
 .verification-note { color: #666; font-size: 0.875rem; margin-top: 20px; }
-.home-bar-sign-out {
-  flex: 1;
-  border-radius: 0;
-  background: #fff;
-  color: var(--purple);
-  font-weight: 600;
-}
+.account-sign-out { margin-top: 24px; }
 
 /* Listing forms (L1, S1, G1) */
 .listing-form select { width: 100%; box-sizing: border-box; padding: 8px; margin: 6px 0 12px; font-size: 1rem; }
