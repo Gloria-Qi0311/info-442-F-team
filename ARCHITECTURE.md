@@ -248,7 +248,7 @@ There is **no separate back-end server**. The React app reads and writes Firesto
  Browser (React app)
    │  Google sign-in ───────▶ Firebase Auth
    │  read/write documents ─▶ Firestore ── checked by firestore.rules
-   │  (photos) ─────────────▶ Firebase Storage (planned, Issue 2.2)
+   │  (photos) ─────────────▶ Firestore (compressed JPEG in photoUrl)
    ▼
  Served by Firebase Hosting over HTTPS
 ```
