@@ -108,7 +108,7 @@ export default function ListingForm({ type }) {
     // PH4: upload the photo first. If it fails, show an error and keep the form.
     let photoUrl;
     try {
-      photoUrl = await uploadListingPhoto(values.photo, user.uid);
+      photoUrl = await uploadListingPhoto(values.photo);
     } catch (error) {
       console.error('Could not upload photo:', error);
       setSubmitError(PHOTO_ERRORS.uploadFailed);
