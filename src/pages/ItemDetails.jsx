@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getListing, isPastAvailability } from '../data/listings';
 import { pickupAreaName } from '../data/listingOptions';
+import { usePickupAreas } from '../data/pickupAreas';
 import { LISTING_STATUS, LISTING_TYPES } from '../data/schema';
 import './ItemDetails.css';
 
@@ -42,6 +43,7 @@ function displayDate(value) {
 
 export default function ItemDetails() {
   const { listingId } = useParams();
+  const pickupAreas = usePickupAreas();
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -101,7 +103,7 @@ export default function ItemDetails() {
             <Detail label="Category" value={listing.category} />
             <Detail label="Condition" value={listing.condition} />
             <Detail label={typeText.owner} value={listing.ownerName} />
-            <Detail label="Pickup area" value={listing.pickupAreaId ? pickupAreaName(listing.pickupAreaId) : ''} />
+            <Detail label="Pickup area" value={listing.pickupAreaId ? pickupAreaName(listing.pickupAreaId, pickupAreas) : ''} />
             <Detail label="Available from" value={displayDate(listing.availableFrom)} />
             <Detail label="Available until" value={displayDate(listing.availableUntil)} />
             <Detail label="Available time slot" value={listing.timeSlot} />
