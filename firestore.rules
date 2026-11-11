@@ -35,6 +35,16 @@ service cloud.firestore {
       allow read: if isUwUser();
       allow create: if isUwUser() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
+      // LS9: any UW user may only flip an expired Active listing to Inactive.
+      allow update: if isUwUser()
+        && resource.data.status == 'Active'
+        && request.resource.data.status == 'Inactive'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && timestamp.date(
+             int(resource.data.availableUntil.split('-')[0]),
+             int(resource.data.availableUntil.split('-')[1]),
+             int(resource.data.availableUntil.split('-')[2])
+           ) + duration.value(1, 'd') < request.time;
     }
 
     match /requests/{id} {

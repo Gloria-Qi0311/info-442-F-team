@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { CircleMarker, MapContainer, Popup, TileLayer } from 'react-leaflet';
+import { Link, useNavigate } from 'react-router-dom';
+import { CircleMarker, MapContainer, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getMapListings, getOwnerPoints } from '../data/listings';
 import { PICKUP_AREAS } from '../data/listingOptions';
@@ -53,6 +53,7 @@ function buildMarkers(listings, areas) {
 }
 
 export default function MapPage() {
+  const navigate = useNavigate();
   const pickupAreas = usePickupAreas();
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -157,11 +158,11 @@ export default function MapPage() {
 
       {loading && <p className="map-status">Loading items…</p>}
       {error && <p className="error" role="alert">{error}</p>}
-      {!loading && !error && listings.length === 0 && (
+      {!loading && !error && listings.length === 0 && !filtering && (
         <p className="map-status">No items are available right now.</p>
       )}
       {/* F2.11 */}
-      {!loading && !error && listings.length > 0 && filtering && filtered.length === 0 && (
+      {!loading && !error && filtering && filtered.length === 0 && (
         <p className="map-status">No items found</p>
       )}
 
@@ -176,7 +177,8 @@ export default function MapPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          {markers.map(({ listing, area, position }) => {
+          {/* F2.12–F2.14: clicking a marker opens the item details page */}
+          {markers.map(({ listing, position }) => {
             const style = TYPE_STYLES[listing.type] || TYPE_STYLES.lend;
             return (
               <CircleMarker
@@ -184,19 +186,8 @@ export default function MapPage() {
                 center={position}
                 radius={9}
                 pathOptions={{ color: '#1f1f1f', weight: 1, fillColor: style.color, fillOpacity: 0.95 }}
-              >
-                <Popup>
-                  <strong>{listing.title}</strong>
-                  <br />
-                  {style.label}
-                  {listing.type === 'sell' && listing.price != null && ` · $${listing.price}`}
-                  <br />
-                  Pickup: {area.name}
-                  <br />
-                  {/* Item details pages are Issue 3.3 */}
-                  <Link to={`/listings/${listing.id}`}>View item</Link>
-                </Popup>
-              </CircleMarker>
+                eventHandlers={{ click: () => navigate(`/listings/${listing.id}`) }}
+              />
             );
           })}
         </MapContainer>
@@ -210,7 +201,7 @@ export default function MapPage() {
               <span className="map-results-meta">
                 {' · '}
                 {(TYPE_STYLES[listing.type] || TYPE_STYLES.lend).label}
-                {listing.type === 'sell' && listing.price != null && ` · $${listing.price}`}
+                {listing.type === 'sell' && listing.price != null && ` · $${Number(listing.price).toFixed(2)}`}
               </span>
             </li>
           ))}
