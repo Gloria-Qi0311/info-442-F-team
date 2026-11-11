@@ -157,11 +157,11 @@ export default function MapPage() {
 
       {loading && <p className="map-status">Loading items…</p>}
       {error && <p className="error" role="alert">{error}</p>}
-      {!loading && !error && listings.length === 0 && (
+      {!loading && !error && listings.length === 0 && !filtering && (
         <p className="map-status">No items are available right now.</p>
       )}
       {/* F2.11 */}
-      {!loading && !error && listings.length > 0 && filtering && filtered.length === 0 && (
+      {!loading && !error && filtering && filtered.length === 0 && (
         <p className="map-status">No items found</p>
       )}
 
@@ -189,7 +189,7 @@ export default function MapPage() {
                   <strong>{listing.title}</strong>
                   <br />
                   {style.label}
-                  {listing.type === 'sell' && listing.price != null && ` · $${listing.price}`}
+                  {listing.type === 'sell' && listing.price != null && ` · $${Number(listing.price).toFixed(2)}`}
                   <br />
                   Pickup: {area.name}
                   <br />
@@ -210,7 +210,7 @@ export default function MapPage() {
               <span className="map-results-meta">
                 {' · '}
                 {(TYPE_STYLES[listing.type] || TYPE_STYLES.lend).label}
-                {listing.type === 'sell' && listing.price != null && ` · $${listing.price}`}
+                {listing.type === 'sell' && listing.price != null && ` · $${Number(listing.price).toFixed(2)}`}
               </span>
             </li>
           ))}
