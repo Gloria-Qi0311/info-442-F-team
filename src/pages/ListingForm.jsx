@@ -116,8 +116,20 @@ export default function ListingForm({ type }) {
       return;
     }
 
+    // L1.14 / S1.18 / G1.15: offline saves never finish, so stop waiting and show the error.
+    if (!navigator.onLine) {
+      setSubmitError(text.failed);
+      setSubmitting(false);
+      return;
+    }
+
     try {
-      const listingId = await createListing(type, values, user, photoUrl);
+      const listingId = await Promise.race([
+        createListing(type, values, user, photoUrl),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Saving timed out')), 15000);
+        }),
+      ]);
       navigate(`/listings/${listingId}/confirmation`, {
         state: { photoPreview },
       });

@@ -15,7 +15,8 @@ import { db } from '../firebase';
 import {
   COLLECTIONS,
   LISTING_TYPES,
-  LISTING_STATUS
+  LISTING_STATUS,
+  REQUEST_STATUS
 } from '../data/schema';
 
 import './ManageListings.css';
@@ -94,6 +95,7 @@ export default function ManageListings() {
   const { user } = useAuth();
 
   const [items, setItems] = useState([]);
+  const [pendingCounts, setPendingCounts] = useState({});
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -105,6 +107,7 @@ export default function ManageListings() {
       setLoading(true);
       setError('');
       setItems([]);
+      setPendingCounts({});
       setSearch('');
 
       if (!user || !titles[type]) {
@@ -130,6 +133,25 @@ export default function ManageListings() {
         if (!active) return;
 
         setItems(records);
+
+        // L3.6 / S3.7 / G3.6: count pending requests for each listing
+        try {
+          const requestsSnapshot = await getDocs(
+            query(
+              collection(db, COLLECTIONS.requests),
+              where('ownerId', '==', user.uid),
+              where('status', '==', REQUEST_STATUS.pending)
+            )
+          );
+          const counts = {};
+          requestsSnapshot.forEach((entry) => {
+            const listingId = entry.data().listingId;
+            counts[listingId] = (counts[listingId] || 0) + 1;
+          });
+          if (active) setPendingCounts(counts);
+        } catch (cause) {
+          console.error(cause);
+        }
 
         // Find expired active listings
         const expiredItems = records.filter(expired);
@@ -257,7 +279,7 @@ export default function ManageListings() {
           className="manage-empty"
         >
           {search.trim()
-            ? 'No listings match your search.'
+            ? 'No items found'
             : 'You have no listings of this type yet.'}
         </p>
       ) : (
@@ -287,6 +309,11 @@ export default function ManageListings() {
                   </span>
                 </p>
 
+                <p>
+                  <strong>Pending requests:</strong>{' '}
+                  {pendingCounts[item.id] || 0}
+                </p>
+
                 {item.category && (
                   <p>
                     <strong>Category:</strong>{' '}
@@ -309,7 +336,7 @@ export default function ManageListings() {
                   item.price != null && (
                     <p>
                       <strong>Price:</strong>{' '}
-                      {item.price}
+                      ${Number(item.price).toFixed(2)}
                     </p>
                   )}
 

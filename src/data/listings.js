@@ -6,6 +6,7 @@ import {
   getDocs,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -39,7 +40,21 @@ export async function createListing(type, values, owner, photoUrl) {
 
 export async function getListing(listingId) {
   const snap = await getDoc(doc(db, COLLECTIONS.listings, listingId));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  if (!snap.exists()) return null;
+  const listing = { id: snap.id, ...snap.data() };
+  if (listing.status === LISTING_STATUS.active && isPastAvailability(listing)) {
+    markInactive(listing.id);
+    listing.status = LISTING_STATUS.inactive;
+  }
+  return listing;
+}
+
+// LS9: an Active listing whose availability window has ended becomes Inactive,
+// whoever loads it first.
+function markInactive(listingId) {
+  updateDoc(doc(db, COLLECTIONS.listings, listingId), {
+    status: LISTING_STATUS.inactive,
+  }).catch((error) => console.error('Could not mark listing inactive:', error));
 }
 
 // Returns true if the listing's availability window has already ended.
@@ -63,7 +78,9 @@ export async function getMapListings() {
   const listings = [];
   snap.forEach((docSnap) => {
     const listing = { id: docSnap.id, ...docSnap.data() };
-    if (!isPastAvailability(listing)) {
+    if (isPastAvailability(listing)) {
+      markInactive(listing.id);
+    } else {
       listings.push(listing);
     }
   });
