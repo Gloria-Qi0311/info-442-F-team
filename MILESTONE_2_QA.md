@@ -150,3 +150,31 @@ The basic listing forms, photo previews, and Manage Listings pages worked in the
 The remaining checks should be completed after the upload issue is resolved.
 
 **Related GitHub Issues:** #6, #7, #8, #9
+
+
+
+## 5. Follow-up Status (November 11, 2026)
+
+I followed up on the M2 issues reported during my original QA testing and reviewed the fixes merged by the development team.
+
+| Issue | Status | Notes |
+|---|---|---|
+| #7 – Photo Upload | FIX MERGED – RETEST NEEDED | PR #40 replaced Firebase Storage uploads with compressed photos stored in Firestore. The new implementation has not yet been independently verified in production. |
+| #8 – Listing Submission | RETEST NEEDED | The original Give listing submission failed. The updated photo-saving implementation needs an end-to-end test on the live site. |
+| #9 – Manage Listings | PARTIAL PASS – RETEST NEEDED | Basic navigation and empty states passed the original tests. Actual listing search, pending request counts, and expired listing status still need production verification. |
+| L1.14 / S1.18 / G1.15 – Save Failure Handling | FIX MERGED – RETEST NEEDED | PR #45 added offline and timeout error handling. This behavior has not yet been independently retested. |
+
+### Remaining Tests
+
+- Submit Lend, Sell, and Give listings with valid photos.
+- Verify that each listing is saved with Active status.
+- Verify the confirmation page and saved photo after refreshing.
+- Check that created listings appear in Manage Listings and Map/Search.
+- Verify expired listing status updates.
+- Test submission error handling when the network is unavailable.
+
+### Follow-up Summary
+
+The development team has merged fixes for the original photo-saving problem and added improvements to listing submission and management.
+
+However, these changes should not be marked as QA PASS until they are tested on the updated application. The original results are preserved above as evidence of the initial issues.
