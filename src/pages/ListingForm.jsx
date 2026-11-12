@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { createListing } from '../data/listings';
+import { createListing, newListingId } from '../data/listings';
 import { checkPhotoFile, PHOTO_ERRORS, uploadListingPhoto } from '../data/photos';
 import {
   CATEGORIES,
@@ -60,6 +60,7 @@ export default function ListingForm({ type }) {
   const [submitError, setSubmitError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [photoPreview, setPhotoPreview] = useState('');
+  const listingIdRef = useRef(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -123,9 +124,13 @@ export default function ListingForm({ type }) {
       return;
     }
 
+    if (!listingIdRef.current) {
+      listingIdRef.current = newListingId();
+    }
+
     try {
       const listingId = await Promise.race([
-        createListing(type, values, user, photoUrl),
+        createListing(type, values, user, photoUrl, listingIdRef.current),
         new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Saving timed out')), 15000);
         }),

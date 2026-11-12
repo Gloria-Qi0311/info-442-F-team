@@ -1,10 +1,10 @@
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
   getDocs,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
@@ -12,9 +12,16 @@ import {
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_STATUS } from './schema.js';
 
+// Pick the ID for a new listing before saving, so retries reuse it (NF9).
+export function newListingId() {
+  return doc(collection(db, COLLECTIONS.listings)).id;
+}
+
 // Save a new listing (L1.12, S1.16, G1.13). New listings start as Active (LS1).
 // photoUrl is a compressed JPEG data URL from uploadListingPhoto in photos.js (Issue #7).
-export async function createListing(type, values, owner, photoUrl) {
+// NF9: a transaction fails while offline instead of being queued, and the fixed
+// listingId means a retry after a lost response cannot create a duplicate.
+export async function createListing(type, values, owner, photoUrl, listingId) {
   const listing = {
     ownerId: owner.uid,
     ownerName: owner.displayName || 'UW Student',
@@ -34,8 +41,14 @@ export async function createListing(type, values, owner, photoUrl) {
     listing.price = Number(values.price);
   }
 
-  const ref = await addDoc(collection(db, COLLECTIONS.listings), listing);
-  return ref.id;
+  const ref = doc(db, COLLECTIONS.listings, listingId);
+  await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(ref);
+    if (!existing.exists()) {
+      transaction.set(ref, listing);
+    }
+  });
+  return listingId;
 }
 
 export async function getListing(listingId) {

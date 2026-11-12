@@ -36,6 +36,7 @@ service cloud.firestore {
       allow create: if isUwUser() && request.resource.data.ownerId == request.auth.uid;
       allow update, delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
       // LS9: any UW user may only flip an expired Active listing to Inactive.
+      // availableUntil ends at Seattle midnight (UTC-8/-7); +8h keeps it from expiring early.
       allow update: if isUwUser()
         && resource.data.status == 'Active'
         && request.resource.data.status == 'Inactive'
@@ -44,7 +45,7 @@ service cloud.firestore {
              int(resource.data.availableUntil.split('-')[0]),
              int(resource.data.availableUntil.split('-')[1]),
              int(resource.data.availableUntil.split('-')[2])
-           ) + duration.value(1, 'd') < request.time;
+           ) + duration.value(1, 'd') + duration.value(8, 'h') < request.time;
     }
 
     match /requests/{id} {
