@@ -65,3 +65,28 @@ Firebase Hosting currently displays the initial setup page, with no deployed web
 The tested authentication and navigation flows for Milestone 1 passed. The remaining work is mainly related to database setup, security rules, deployment verification, and a few tests that have not yet been completed.
 
 I will update the report as the remaining issues are resolved and retested.
+
+
+## 5. Follow-up Retesting (November 9–11, 2026)
+
+I followed up on the issues identified in my original M1 QA testing and verified the fixes after the team made updates.
+
+| Test | Retest Result | Notes |
+|---|---|---|
+| NF6 – HTTPS Hosting | PASS | The application is accessible at https://info442-husky-share.web.app. |
+| NF7 – Firestore Security Rules | PASS | An unauthenticated read of `healthChecks` was denied in the Firebase Rules Simulator. |
+| Database Read/Write | PASS | Successfully saved and retrieved a test document using `/dev/db-check` on November 9. |
+| Pickup Areas | PASS – initial data present | Confirmed that the production Firestore `pickupAreas` collection contains all 8 expected documents. The HUB document's name and coordinates were checked. |
+| NF10 – Automated ESLint | PASS | GitHub Actions runs ESLint successfully on pull requests and pushes to `main`. |
+| NF10 – Required PR Check | CONFIRMED CONFIGURED | GitHub displays `lint` as a required check on PR #33. The PR's own check still needs to run before merging. |
+
+### Remaining Verification
+
+- Non-UW account rejection was not independently tested in the original M1 QA.
+- The latest Sign Out navigation change should receive a final regression test.
+
+### Retest Summary
+
+The original NF6, NF7, and database read/write issues passed follow-up testing. The initial pickup area data is now present in Firestore, and the repository has an automated required ESLint check.
+
+The original test results above have been preserved as a record of the issues found during initial QA. These follow-up results document what was verified after the fixes.
