@@ -52,7 +52,7 @@ button:disabled { opacity: 0.6; }
   width: 96px; height: 96px; flex-shrink: 0; border-radius: 16px;
   display: flex; align-items: center; justify-content: center; font-size: 1.4rem; font-weight: 600;
 }
-.post-option-label.lend { background: var(--lend); color: #fff; }
+.post-option-label.lend { background: #2563eb; color: #fff; }
 .post-option-label.sell { background: var(--sell); color: #000; }
 .post-option-label.give { background: var(--give); color: #000; }
 
