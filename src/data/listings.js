@@ -21,7 +21,9 @@ export function newListingId() {
 // photoUrl is a compressed JPEG data URL from uploadListingPhoto in photos.js (Issue #7).
 // NF9: a transaction fails while offline instead of being queued, and the fixed
 // listingId means a retry after a lost response cannot create a duplicate.
-export async function createListing(type, values, owner, photoUrl, listingId) {
+// Once save.aborted is set, later attempts stop before writing; save.committing
+// tells the caller a write may already be on its way to the server.
+export async function createListing(type, values, owner, photoUrl, listingId, save = {}) {
   const listing = {
     ownerId: owner.uid,
     ownerName: owner.displayName || 'UW Student',
@@ -44,9 +46,14 @@ export async function createListing(type, values, owner, photoUrl, listingId) {
   const ref = doc(db, COLLECTIONS.listings, listingId);
   await runTransaction(db, async (transaction) => {
     const existing = await transaction.get(ref);
-    if (!existing.exists()) {
-      transaction.set(ref, listing);
+    if (existing.exists()) {
+      return;
     }
+    if (save.aborted) {
+      throw new Error('Saving was cancelled');
+    }
+    save.committing = true;
+    transaction.set(ref, listing);
   });
   return listingId;
 }

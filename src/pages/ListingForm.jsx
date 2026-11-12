@@ -128,13 +128,25 @@ export default function ListingForm({ type }) {
       listingIdRef.current = newListingId();
     }
 
+    // NF9: after 15 seconds, stop the save. If a write was already sent, wait for
+    // its real result so the page never shows a failure for a saved listing.
+    const save = { aborted: false, committing: false };
+    const saving = createListing(type, values, user, photoUrl, listingIdRef.current, save);
+    saving.catch(() => {});
+    let timer;
+    const timedOut = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), 15000);
+    });
+
     try {
-      const listingId = await Promise.race([
-        createListing(type, values, user, photoUrl, listingIdRef.current),
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Saving timed out')), 15000);
-        }),
-      ]);
+      let listingId = await Promise.race([saving, timedOut]);
+      if (listingId === null) {
+        save.aborted = true;
+        if (!save.committing) {
+          throw new Error('Saving timed out');
+        }
+        listingId = await saving;
+      }
       navigate(`/listings/${listingId}/confirmation`, {
         state: { photoPreview },
       });
@@ -142,6 +154,8 @@ export default function ListingForm({ type }) {
       console.error('Could not save listing:', error);
       setSubmitError(text.failed);
       setSubmitting(false);
+    } finally {
+      clearTimeout(timer);
     }
   }
 
