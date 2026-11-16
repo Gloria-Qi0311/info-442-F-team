@@ -119,7 +119,21 @@ function RequestPanel({ listing, available }) {
   }
 
   if (listing.type === LISTING_TYPES.lend) {
-    return <section className="item-request">{available ? <Link className="item-request-link" to={`/listings/${listing.id}/borrow`}>Send request!</Link> : <p>This item is unavailable.</p>}{!available && <Link to={`/listings/${listing.id}/borrow/status`}>View my borrowing request</Link>}</section>;
+    if (isOwner) {
+      return <section className="item-request"><p>This is your listing.</p><Link to={`/manage/lend/${listing.id}/requests`}>View requests for this item</Link></section>;
+    }
+    if (loading) return <p role="status">Loading your request...</p>;
+    const hasRequest = Boolean(request);
+    return (
+      <section className="item-request">
+        {hasRequest && <p>Your request: {request.status}</p>}
+        {hasRequest && <Link to={`/listings/${listing.id}/borrow/status`}>View my borrowing request</Link>}
+        {available && (!hasRequest || request.status === REQUEST_STATUS.cancelled) && (
+          <Link className="item-request-link" to={`/listings/${listing.id}/borrow`}>Send request!</Link>
+        )}
+        {error && <p role="alert" className="error">{error}</p>}
+      </section>
+    );
   }
 
   if (loading) {
