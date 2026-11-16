@@ -29,6 +29,7 @@ export default function ListingRequests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [approvingId, setApprovingId] = useState('');
   const [pickupByRequest, setPickupByRequest] = useState({});
   const [actionError, setActionError] = useState('');
   const [ratings, setRatings] = useState({});
@@ -81,6 +82,7 @@ export default function ListingRequests() {
       await decideItemRequest(request.id, user.uid, decision, pickupByRequest[request.id] || {});
       if (decision === 'approve') await reconcilePendingRequests(listingId, user.uid);
       setRequests(await getRequestsForListing(listingId, user.uid));
+      setApprovingId('');
     } catch (cause) {
       setActionError(cause.message || 'Could not update request. Please try again.');
     } finally {
@@ -149,14 +151,30 @@ export default function ListingRequests() {
               )}
               {request.status === REQUEST_STATUS.pending && (
                 <div className="request-decision">
-                  <label>Pickup date <input type="date" value={pickupByRequest[request.id]?.date || ''}
-                    onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], date: e.target.value } }))} /></label>
-                  <label>Pickup time <input type="time" value={pickupByRequest[request.id]?.time || ''}
-                    onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], time: e.target.value } }))} /></label>
-                  <label>Pickup location <input type="text" value={pickupByRequest[request.id]?.location || ''}
-                    onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], location: e.target.value } }))} /></label>
-                  <button type="button" disabled={Boolean(busyId)} onClick={() => decide(request, 'approve')}>Approve</button>
-                  <button type="button" disabled={Boolean(busyId)} onClick={() => decide(request, 'decline')}>Decline</button>
+                  {approvingId === request.id && (
+                    <div>
+                      <label>Pickup date <input type="date"
+                        min={new Date().toLocaleDateString('sv-SE')}
+                        value={pickupByRequest[request.id]?.date || ''}
+                        onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], date: e.target.value } }))} /></label>
+                      <label>Pickup time <input type="time"
+                        value={pickupByRequest[request.id]?.time || ''}
+                        onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], time: e.target.value } }))} /></label>
+                      <label>Pickup location <input type="text"
+                        value={pickupByRequest[request.id]?.location || ''}
+                        onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], location: e.target.value } }))} /></label>
+                      <button type="button" disabled={Boolean(busyId)}
+                        onClick={() => decide(request, 'approve')}>Confirm approval</button>
+                      <button type="button" disabled={Boolean(busyId)}
+                        onClick={() => setApprovingId('')}>Back</button>
+                    </div>
+                  )}
+                  {approvingId !== request.id && (
+                    <button type="button" disabled={Boolean(busyId)}
+                      onClick={() => { setActionError(''); setApprovingId(request.id); }}>Approve</button>
+                  )}
+                  <button type="button" disabled={Boolean(busyId)}
+                    onClick={() => decide(request, 'decline')}>Decline</button>
                 </div>
               )}
             </li>
