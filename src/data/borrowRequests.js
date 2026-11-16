@@ -8,7 +8,7 @@ export async function sendBorrowRequest(listingId, user, values) {
   if (!values.startDate || !values.endDate || !values.pickupPreference?.trim() || !values.purpose?.trim()) {
     throw new Error('Please complete all required fields.');
   }
-  const datePattern = /^\\d{4}-\\d{2}-\\d{2}$/;
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   if (!datePattern.test(values.startDate) || !datePattern.test(values.endDate)) throw new Error('Please enter valid dates.');
   if (values.endDate < values.startDate) throw new Error('Return date cannot be before start date.');
   if (values.startDate < new Date().toLocaleDateString('en-CA')) throw new Error('Start date cannot be in the past.');
