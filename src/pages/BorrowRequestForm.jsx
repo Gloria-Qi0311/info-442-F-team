@@ -27,6 +27,8 @@ export default function BorrowRequestForm() {
           setError('This item is no longer available.');
         } else if (existing && [REQUEST_STATUS.pending, REQUEST_STATUS.approved].includes(existing.status)) {
           navigate(`/listings/${listingId}/borrow/status`, { replace: true });
+        } else if (existing?.status === REQUEST_STATUS.declined) {
+          setError('The owner has declined your previous request for this item.');
         } else {
           setListing(item);
         }
