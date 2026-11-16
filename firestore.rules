@@ -85,7 +85,12 @@ service cloud.firestore {
                     'pickupDate', 'pickupTime', 'pickupLocation', 'viewedByOwner']);
       }
 
-      allow read: if isUwUser()
+      // Requesters must be able to check their deterministic request ID before
+      // the first request exists. Keep collection queries restricted to members.
+      allow get: if isUwUser()
+        && (id.matches('.*_' + request.auth.uid)
+          || (resource != null && resource.data.ownerId == request.auth.uid));
+      allow list: if isUwUser()
         && (resource.data.requesterId == request.auth.uid
           || resource.data.ownerId == request.auth.uid);
 
