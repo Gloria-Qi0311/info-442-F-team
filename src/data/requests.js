@@ -79,7 +79,7 @@ export async function sendItemRequest(listingId, requester) {
       viewedByOwner: false,
       createdAt: serverTimestamp(),
     };
-    transaction.set(requestRef, request);
+    transaction.set(requestRef, request, { merge: true });
     return { id: requestRef.id, ...request };
   });
 }
