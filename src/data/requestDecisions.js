@@ -18,7 +18,7 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
   });
   const listingRef = doc(db, COLLECTIONS.listings, initial.listingId);
   const pendingSnap = await getDocs(query(collection(db, COLLECTIONS.requests),
-    where('listingId', '==', initial.listingId), where('status', '==', REQUEST_STATUS.pending)));
+    where('listingId', '==', initial.listingId), where('ownerId', '==', ownerId), where('status', '==', REQUEST_STATUS.pending)));
   const pendingRefs = pendingSnap.docs.map(snap => doc(db, COLLECTIONS.requests, snap.id));
 
   return runTransaction(db, async tx => {
