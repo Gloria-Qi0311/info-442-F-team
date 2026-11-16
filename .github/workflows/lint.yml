@@ -15,7 +15,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm install --no-save @firebase/rules-unit-testing
+      - run: npm install --no-save @firebase/rules-unit-testing@4.0.1
       - run: npm run test:rules
       - run: npm run lint
       - run: npm run build
