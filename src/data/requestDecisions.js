@@ -12,6 +12,12 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
     if (!pickup.location?.trim()) throw new Error('Please enter a pickup location.');
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    const [year, month, day] = pickup.date.split('-').map(Number);
+    const parsed = new Date(year, month - 1, day);
+    if (!datePattern.test(pickup.date) || parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) {
+      throw new Error('Please enter a valid pickup date.');
+    }
     if (pickup.date < today) throw new Error('Pickup date must be today or later.');
   }
   const requestRef = doc(db, COLLECTIONS.requests, requestId);
