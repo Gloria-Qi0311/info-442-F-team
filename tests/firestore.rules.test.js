@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { before, after, beforeEach, test } from 'node:test';
-import assert from 'node:assert/strict';
 import {
   initializeTestEnvironment,
   assertSucceeds,
