@@ -11,6 +11,12 @@ export async function sendBorrowRequest(listingId, user, values) {
   if (!values.purpose?.trim()) throw new Error('Please enter a purpose of use.');
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   if (!datePattern.test(values.startDate) || !datePattern.test(values.endDate)) throw new Error('Please enter valid dates.');
+  const isCalendarDate = value => {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  };
+  if (!isCalendarDate(values.startDate) || !isCalendarDate(values.endDate)) throw new Error('Please enter valid calendar dates.');
   if (values.endDate < values.startDate) throw new Error('Return date cannot be before start date.');
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
