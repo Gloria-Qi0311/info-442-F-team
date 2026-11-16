@@ -48,8 +48,66 @@ service cloud.firestore {
            ) + duration.value(1, 'd') + duration.value(8, 'h') < request.time;
     }
 
+    // Requesters may submit or cancel their own requests. Only the listing
+    // owner can approve/decline them or mark received requests as viewed.
+    // Keep identity and listing association immutable after creation.
     match /requests/{id} {
-      allow read, write: if isUwUser();
+      function isRequester() {
+        return resource.data.requesterId == request.auth.uid;
+      }
+
+      function isListingOwner() {
+        return resource.data.ownerId == request.auth.uid;
+      }
+
+      function sameIdentity() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'cancelledAt', 'decidedAt', 'stage',
+                    'pickupDate', 'pickupTime', 'pickupLocation', 'viewedByOwner']);
+      }
+
+      allow read: if isUwUser();
+
+      allow create: if isUwUser()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.ownerId != request.auth.uid
+        && request.resource.data.status == 'Pending'
+        && id == request.resource.data.listingId + '_' + request.auth.uid
+        && exists(/databases/$(database)/documents/listings/$(request.resource.data.listingId))
+        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.ownerId
+          == request.resource.data.ownerId
+        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.type
+          == request.resource.data.listingType
+        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status
+          == 'Active';
+
+      allow update: if isUwUser() && (
+        (isRequester()
+          && resource.data.status == 'Pending'
+          && request.resource.data.status == 'Cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'cancelledAt']))
+        ||
+        (isRequester()
+          && resource.data.status == 'Cancelled'
+          && request.resource.data.status == 'Pending'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'stage', 'viewedByOwner', 'createdAt',
+                      'startDate', 'endDate', 'pickupPreference', 'purpose',
+                      'requesterName', 'listingTitle']))
+        ||
+        (isListingOwner()
+          && resource.data.status == 'Pending'
+          && request.resource.data.status in ['Approved', 'Declined']
+          && sameIdentity())
+        ||
+        (isListingOwner()
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['viewedByOwner']))
+      );
+
+      allow delete: if false;
     }
     match /confirmationPhotos/{id} {
       allow read, write: if isUwUser();
