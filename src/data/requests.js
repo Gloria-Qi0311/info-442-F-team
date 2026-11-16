@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  deleteField,
   getDoc,
   getDocs,
   onSnapshot,
@@ -80,7 +81,7 @@ export async function sendItemRequest(listingId, requester) {
       createdAt: serverTimestamp(),
     };
     if (existingSnap.exists()) {
-      transaction.update(requestRef, request);
+      transaction.update(requestRef, { ...request, cancelledAt: deleteField() });
     } else {
       transaction.set(requestRef, request);
     }
