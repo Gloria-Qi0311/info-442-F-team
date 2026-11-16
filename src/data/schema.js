@@ -26,7 +26,7 @@ export const REQUEST_STATUS = {
   pending: 'Pending',
   approved: 'Approved',
   declined: 'Declined',
-  cancelled: 'Cancelled',
+  cancelled: 'Canceled',
 };
 
 // Lending timeline: Approved → Pickup → Return → Received.
