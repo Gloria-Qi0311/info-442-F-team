@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import MapPage from './pages/MapPage';
 import Manage from './pages/Manage';
 import ManageListings from './pages/ManageListings';
+import ListingRequests from './pages/ListingRequests';
 import ItemDetails from './pages/ItemDetails';
 import Account from './pages/Account';
 import PostItem from './pages/PostItem';
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/map" element={<MapPage />} />
             <Route path="/manage" element={<Manage />} />
             <Route path="/manage/:type" element={<ManageListings />} />
+            <Route path="/manage/:type/:listingId/requests" element={<ListingRequests />} />
             <Route path="/account" element={<Account />} />
             <Route path="/post" element={<PostItem />} />
             <Route path="/post/lend" element={<ListingForm key="lend" type="lend" />} />
