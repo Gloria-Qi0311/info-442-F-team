@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { getListing } from '../data/listings';
 import { getRequestsForListing, markRequestsViewed } from '../data/requests';
 import { LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
-import { decideItemRequest } from '../data/requestDecisions';
+import { decideItemRequest, reconcilePendingRequests } from '../data/requestDecisions';
 import './ItemDetails.css';
 
 // Issue #14: sellers (S3) and givers (G3) see the requests for one of their listings.
@@ -48,6 +48,7 @@ export default function ListingRequests() {
         }
         setListing(result);
 
+        await reconcilePendingRequests(listingId, user.uid);
         const received = await getRequestsForListing(listingId, user.uid);
         if (!active) return;
         setRequests(received);
@@ -69,6 +70,7 @@ export default function ListingRequests() {
     setActionError('');
     try {
       await decideItemRequest(request.id, user.uid, decision, pickupByRequest[request.id] || {});
+      if (decision === 'approve') await reconcilePendingRequests(listingId, user.uid);
       setRequests(await getRequestsForListing(listingId, user.uid));
     } catch (cause) {
       setActionError(cause.message || 'Could not update request. Please try again.');
