@@ -5,6 +5,7 @@ import { getListing } from '../data/listings';
 import { getRequestsForListing, markRequestsViewed } from '../data/requests';
 import { LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import { decideItemRequest, reconcilePendingRequests } from '../data/requestDecisions';
+import { getRequesterRatingSummary } from '../data/requestRatings';
 import './ItemDetails.css';
 
 // Issue #14: sellers (S3) and givers (G3) see the requests for one of their listings.
@@ -30,6 +31,7 @@ export default function ListingRequests() {
   const [busyId, setBusyId] = useState('');
   const [pickupByRequest, setPickupByRequest] = useState({});
   const [actionError, setActionError] = useState('');
+  const [ratings, setRatings] = useState({});
   const pendingRequests = requests.filter(request => request.status === REQUEST_STATUS.pending);
 
   useEffect(() => {
@@ -53,6 +55,12 @@ export default function ListingRequests() {
         const received = await getRequestsForListing(listingId, user.uid);
         if (!active) return;
         setRequests(received);
+        const borrowerIds = [...new Set(received.filter(request => request.status === REQUEST_STATUS.pending).map(request => request.requesterId))];
+        const summaries = await Promise.all(borrowerIds.map(async id => {
+          try { return [id, await getRequesterRatingSummary(id)]; }
+          catch (cause) { console.error('Could not load borrower rating:', cause); return [id, null]; }
+        }));
+        if (active) setRatings(Object.fromEntries(summaries));
         markRequestsViewed(received);
       } catch (cause) {
         console.error('Could not load requests:', cause);
@@ -115,6 +123,19 @@ export default function ListingRequests() {
                   <div className="listing-request-date">Sent {sentDate(request.createdAt)}</div>
                 )}
               </div>
+              {type === LISTING_TYPES.lend && (
+                <div>
+                  <strong>Borrower rating:</strong>{' '}
+                  {ratings[request.requesterId]?.average != null
+                    ? `${ratings[request.requesterId].average.toFixed(1)} / 5 stars`
+                    : 'No ratings yet'}
+                  <p><strong>Most received tags:</strong>{' '}
+                    {ratings[request.requesterId]?.topTags.length
+                      ? ratings[request.requesterId].topTags.join(', ')
+                      : 'No tags yet'}
+                  </p>
+                </div>
+              )}
               <div>
                 <span className={`request-status request-status-${String(request.status).toLowerCase()}`}>
                   {request.status}
