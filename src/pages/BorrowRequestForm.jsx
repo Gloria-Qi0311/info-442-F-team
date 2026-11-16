@@ -64,7 +64,7 @@ export default function BorrowRequestForm() {
         <>
           <p>{listing.title || listing.itemName || 'Item'}</p>
           <p>Available: {listing.availableFrom} to {listing.availableUntil}</p>
-          <form onSubmit={submit} className="borrow-form">
+          <form onSubmit={submit} noValidate className="borrow-form">
             <label htmlFor="borrow-start">Start date</label>
             <input id="borrow-start" type="date" required min={listing.availableFrom} max={listing.availableUntil}
               value={values.startDate} onChange={event => change('startDate', event.target.value)} />
@@ -77,7 +77,7 @@ export default function BorrowRequestForm() {
             <label htmlFor="borrow-purpose">Purpose of use</label>
             <textarea id="borrow-purpose" required value={values.purpose}
               onChange={event => change('purpose', event.target.value)} />
-            <button type="submit" disabled={busy}>{busy ? 'Sending...' : 'Send request!'}</button>
+            <button type="submit" disabled={busy}>{busy ? 'Sending...' : 'Send my request'}</button>
           </form>
         </>
       ) : null}
