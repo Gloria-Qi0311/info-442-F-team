@@ -79,7 +79,11 @@ export async function sendItemRequest(listingId, requester) {
       viewedByOwner: false,
       createdAt: serverTimestamp(),
     };
-    transaction.set(requestRef, request, { merge: true });
+    if (existingSnap.exists()) {
+      transaction.update(requestRef, request);
+    } else {
+      transaction.set(requestRef, request);
+    }
     return { id: requestRef.id, ...request };
   });
 }
