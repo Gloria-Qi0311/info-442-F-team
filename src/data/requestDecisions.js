@@ -19,6 +19,9 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
       throw new Error('Please enter a valid pickup date.');
     }
     if (pickup.date < today) throw new Error('Pickup date must be today or later.');
+    if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(pickup.time)) {
+      throw new Error('Please enter a valid pickup time.');
+    }
   }
   const requestRef = doc(db, COLLECTIONS.requests, requestId);
   // The first read identifies the listing; the transaction verifies it again.
