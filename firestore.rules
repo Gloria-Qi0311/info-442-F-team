@@ -107,12 +107,12 @@ service cloud.firestore {
       allow update: if isUwUser() && (
         (isRequester()
           && resource.data.status == 'Pending'
-          && request.resource.data.status == 'Cancelled'
+          && request.resource.data.status == 'Canceled'
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'cancelledAt']))
         ||
         (isRequester()
-          && resource.data.status == 'Cancelled'
+          && resource.data.status == 'Canceled'
           && request.resource.data.status == 'Pending'
           && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
