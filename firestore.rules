@@ -66,7 +66,9 @@ service cloud.firestore {
                     'pickupDate', 'pickupTime', 'pickupLocation', 'viewedByOwner']);
       }
 
-      allow read: if isUwUser();
+      allow read: if isUwUser()
+        && (resource.data.requesterId == request.auth.uid
+          || resource.data.ownerId == request.auth.uid);
 
       allow create: if isUwUser()
         && request.resource.data.requesterId == request.auth.uid
@@ -93,6 +95,8 @@ service cloud.firestore {
         (isRequester()
           && resource.data.status == 'Cancelled'
           && request.resource.data.status == 'Pending'
+          && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+          && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'stage', 'viewedByOwner', 'createdAt',
                       'startDate', 'endDate', 'pickupPreference', 'purpose',
