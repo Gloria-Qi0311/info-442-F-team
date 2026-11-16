@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from './schema';
 import { requestIdFor } from './requests';
