@@ -39,7 +39,7 @@ export async function sendBorrowRequest(listingId, user, values) {
       startDate: values.startDate, endDate: values.endDate,
       pickupPreference: values.pickupPreference.trim(), purpose: values.purpose.trim(),
       createdAt: serverTimestamp(),
-    });
+    }, { merge: true });
     return requestRef.id;
   });
 }
