@@ -5,13 +5,16 @@ import { requestIdFor } from './requests';
 import { isPastAvailability } from './listings';
 
 export async function sendBorrowRequest(listingId, user, values) {
-  if (!values.startDate || !values.endDate || !values.pickupPreference?.trim() || !values.purpose?.trim()) {
-    throw new Error('Please complete all required fields.');
-  }
+  if (!values.startDate) throw new Error('Please enter a start date.');
+  if (!values.endDate) throw new Error('Please enter a return date.');
+  if (!values.pickupPreference?.trim()) throw new Error('Please enter a pickup preference.');
+  if (!values.purpose?.trim()) throw new Error('Please enter a purpose of use.');
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   if (!datePattern.test(values.startDate) || !datePattern.test(values.endDate)) throw new Error('Please enter valid dates.');
   if (values.endDate < values.startDate) throw new Error('Return date cannot be before start date.');
-  if (values.startDate < new Date().toLocaleDateString('en-CA')) throw new Error('Start date cannot be in the past.');
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (values.startDate < today) throw new Error('Start date must be today or later.');
   const listingRef = doc(db, COLLECTIONS.listings, listingId);
   const requestRef = doc(db, COLLECTIONS.requests, requestIdFor(listingId, user.uid));
   return runTransaction(db, async tx => {
