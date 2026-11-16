@@ -1,4 +1,4 @@
-import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { deleteField, doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from './schema';
 import { requestIdFor } from './requests';
@@ -50,7 +50,7 @@ export async function sendBorrowRequest(listingId, user, values) {
       createdAt: serverTimestamp(),
     };
     if (existing.exists()) {
-      tx.update(requestRef, requestData);
+      tx.update(requestRef, { ...requestData, cancelledAt: deleteField() });
     } else {
       tx.set(requestRef, requestData);
     }
