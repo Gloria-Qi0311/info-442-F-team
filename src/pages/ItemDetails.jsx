@@ -160,7 +160,12 @@ function RequestPanel({ listing, available }) {
         </>
       )}
       {status === REQUEST_STATUS.approved && (
-        <p>Your request was approved. Check Manage for the pickup details.</p>
+        <div>
+          <p>Your request was approved!</p>
+          {request.pickupDate && <p>Pickup date: {request.pickupDate}</p>}
+          {request.pickupTime && <p>Pickup time: {request.pickupTime}</p>}
+          {request.pickupLocation && <p>Pickup location: {request.pickupLocation}</p>}
+        </div>
       )}
       {status === REQUEST_STATUS.declined && (
         <p>The owner declined your request for this item.</p>
