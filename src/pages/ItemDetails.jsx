@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import { getListing, isPastAvailability } from '../data/listings';
 import { pickupAreaName } from '../data/listingOptions';
 import { usePickupAreas } from '../data/pickupAreas';
-import { LISTING_STATUS, LISTING_TYPES } from '../data/schema';
+import { cancelItemRequest, getMyRequest, sendItemRequest } from '../data/requests';
+import { LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
 
 const TYPE_TEXT = {
@@ -39,6 +41,122 @@ function displayDate(value) {
     return new Date(year, month - 1, day).toLocaleDateString();
   }
   return String(value);
+}
+
+// Issue #14: "I want it" for Sell (S5) and Give (G6) listings.
+// The requester can send a request, see its status, and cancel it while it is Pending.
+// The owner sees a link to the requests for their listing instead (S3 / G3).
+function RequestPanel({ listing, available }) {
+  const { user } = useAuth();
+  const [request, setRequest] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const isOwner = Boolean(user) && listing.ownerId === user.uid;
+
+  useEffect(() => {
+    let active = true;
+    setRequest(null);
+    setError('');
+    if (!user || isOwner) {
+      setLoading(false);
+      return () => { active = false; };
+    }
+    setLoading(true);
+    getMyRequest(listing.id, user.uid)
+      .then((result) => {
+        if (active) setRequest(result);
+      })
+      .catch((cause) => {
+        console.error('Could not load your request:', cause);
+        if (active) setError('Could not load your request status. Please refresh the page.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [listing.id, user, isOwner]);
+
+  async function handleSend() {
+    setBusy(true);
+    setError('');
+    try {
+      setRequest(await sendItemRequest(listing.id, user));
+    } catch (cause) {
+      console.error('Could not send request:', cause);
+      setError(cause.message || 'Could not send your request. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (!window.confirm('Cancel your request for this item?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      setRequest(await cancelItemRequest(request.id, user.uid));
+    } catch (cause) {
+      console.error('Could not cancel request:', cause);
+      setError(cause.message || 'Could not cancel your request. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (listing.type !== LISTING_TYPES.sell && listing.type !== LISTING_TYPES.give) {
+    return null;
+  }
+
+  if (isOwner) {
+    return (
+      <section className="item-request">
+        <p>This is your listing.</p>
+        <Link className="item-request-link" to={`/manage/${listing.type}/${listing.id}/requests`}>
+          View requests for this item
+        </Link>
+      </section>
+    );
+  }
+
+  if (loading) {
+    return <p role="status">Loading your request...</p>;
+  }
+
+  const status = request ? request.status : null;
+  const canSend = available && (!status || status === REQUEST_STATUS.cancelled);
+
+  return (
+    <section className="item-request">
+      {status && (
+        <p>
+          <strong>Your request:</strong>{' '}
+          <span className={`request-status request-status-${status.toLowerCase()}`}>{status}</span>
+        </p>
+      )}
+      {status === REQUEST_STATUS.pending && (
+        <>
+          <p>Your request has been sent. The owner will approve or decline it.</p>
+          <button type="button" className="item-request-cancel" onClick={handleCancel} disabled={busy}>
+            {busy ? 'Canceling...' : 'Cancel request'}
+          </button>
+        </>
+      )}
+      {status === REQUEST_STATUS.approved && (
+        <p>Your request was approved. Check Manage for the pickup details.</p>
+      )}
+      {status === REQUEST_STATUS.declined && (
+        <p>The owner declined your request for this item.</p>
+      )}
+      {canSend && (
+        <button type="button" className="item-request-send" onClick={handleSend} disabled={busy}>
+          {busy ? 'Sending...' : 'I want it'}
+        </button>
+      )}
+      {error && <p role="alert" className="error">{error}</p>}
+    </section>
+  );
 }
 
 export default function ItemDetails() {
@@ -114,6 +232,7 @@ export default function ItemDetails() {
               <p>{listing.description}</p>
             </section>
           )}
+          <RequestPanel listing={listing} available={available} />
         </>
       )}
     </main>
