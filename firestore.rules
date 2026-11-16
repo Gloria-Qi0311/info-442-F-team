@@ -99,7 +99,12 @@ service cloud.firestore {
         (isListingOwner()
           && resource.data.status == 'Pending'
           && request.resource.data.status in ['Approved', 'Declined']
-          && sameIdentity())
+          && sameIdentity()
+          && (request.resource.data.status == 'Declined'
+            || (
+              get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Unavailable'
+            )))
         ||
         (isListingOwner()
           && request.resource.data.status == resource.data.status
