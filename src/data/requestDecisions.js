@@ -41,6 +41,9 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
     }
     // Reject if the pending request query became stale, rather than silently leaving
     // an outstanding request. Recheck the list in the caller after an error.
+    if (!pendingRefs.some(ref => ref.id === requestId)) {
+      throw new Error('Request list changed. Refresh and try again.');
+    }
     for (const snap of pendingSnaps) {
       if (!snap.exists() || snap.data().status !== REQUEST_STATUS.pending) {
         throw new Error('Requests changed. Refresh and try again.');
@@ -56,7 +59,7 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
         } : {}),
       });
     }
-    tx.update(listingRef, { status: LISTING_STATUS.unavailable });
+    tx.update(listingRef, { status: LISTING_STATUS.unavailable, approvedRequestId: requestId });
     return REQUEST_STATUS.approved;
   });
 }
