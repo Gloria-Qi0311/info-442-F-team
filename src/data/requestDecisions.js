@@ -63,3 +63,41 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
     return REQUEST_STATUS.approved;
   });
 }
+
+/**
+ * Repair pending requests left by a submission racing an approval.
+ * Safe to call repeatedly: each update verifies that the listing has
+ * an approved winner and the request is still Pending.
+ * This is best-effort client reconciliation, not a server-side trigger.
+ */
+export async function reconcilePendingRequests(listingId, ownerId) {
+  const listingRef = doc(db, COLLECTIONS.listings, listingId);
+  const listingSnap = await runTransaction(db, tx => tx.get(listingRef));
+  if (!listingSnap.exists()) return 0;
+  const listing = listingSnap.data();
+  if (listing.ownerId !== ownerId || listing.status !== LISTING_STATUS.unavailable || !listing.approvedRequestId) {
+    return 0;
+  }
+  const pending = await getDocs(query(collection(db, COLLECTIONS.requests),
+    where('listingId', '==', listingId), where('ownerId', '==', ownerId),
+    where('status', '==', REQUEST_STATUS.pending)));
+  let declined = 0;
+  for (const candidate of pending.docs) {
+    if (candidate.id === listing.approvedRequestId) continue;
+    const changed = await runTransaction(db, async tx => {
+      const currentListing = await tx.get(listingRef);
+      const currentRequest = await tx.get(candidate.ref);
+      if (!currentListing.exists() || !currentRequest.exists()) return false;
+      const item = currentListing.data();
+      const request = currentRequest.data();
+      if (item.ownerId !== ownerId || item.status !== LISTING_STATUS.unavailable ||
+          !item.approvedRequestId || candidate.id === item.approvedRequestId ||
+          request.ownerId !== ownerId || request.listingId !== listingId ||
+          request.status !== REQUEST_STATUS.pending) return false;
+      tx.update(candidate.ref, { status: REQUEST_STATUS.declined, decidedAt: serverTimestamp() });
+      return true;
+    });
+    if (changed) declined += 1;
+  }
+  return declined;
+}
