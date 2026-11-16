@@ -7,6 +7,8 @@ import Manage from './pages/Manage';
 import ManageListings from './pages/ManageListings';
 import ListingRequests from './pages/ListingRequests';
 import ItemDetails from './pages/ItemDetails';
+import BorrowRequestForm from './pages/BorrowRequestForm';
+import BorrowRequestStatus from './pages/BorrowRequestStatus';
 import Account from './pages/Account';
 import PostItem from './pages/PostItem';
 import ListingForm from './pages/ListingForm';
@@ -41,6 +43,8 @@ export default function App() {
             <Route path="/post/sell" element={<ListingForm key="sell" type="sell" />} />
             <Route path="/post/give" element={<ListingForm key="give" type="give" />} />
             <Route path="/listings/:listingId" element={<ItemDetails />} />
+            <Route path="/listings/:listingId/borrow" element={<BorrowRequestForm />} />
+            <Route path="/listings/:listingId/borrow/status" element={<BorrowRequestStatus />} />
             <Route path="/listings/:listingId/confirmation" element={<ListingConfirmation />} />
             <Route path="/dev/db-check" element={<DbCheck />} />
           </Route>
