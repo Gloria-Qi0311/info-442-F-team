@@ -28,7 +28,8 @@ export default function ListingRequests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [pickup, setPickup] = useState({ date: '', time: '', location: '' });
+  const [pickupByRequest, setPickupByRequest] = useState({});
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -65,12 +66,12 @@ export default function ListingRequests() {
 
   async function decide(request, decision) {
     setBusyId(request.id);
-    setError('');
+    setActionError('');
     try {
-      await decideItemRequest(request.id, user.uid, decision, pickup);
+      await decideItemRequest(request.id, user.uid, decision, pickupByRequest[request.id] || {});
       setRequests(await getRequestsForListing(listingId, user.uid));
     } catch (cause) {
-      setError(cause.message || 'Could not update request. Please try again.');
+      setActionError(cause.message || 'Could not update request. Please try again.');
     } finally {
       setBusyId('');
     }
@@ -94,6 +95,7 @@ export default function ListingRequests() {
       <h1>{pageText.heading}</h1>
       {listing && <p>{listing.title || listing.itemName || 'Untitled item'}</p>}
 
+      {actionError && <p role="alert" className="error">{actionError}</p>}
       {loading ? (
         <p role="status">Loading requests...</p>
       ) : error ? (
@@ -115,11 +117,20 @@ export default function ListingRequests() {
                   {request.status}
                 </span>
               </div>
+              {request.startDate && <p>Borrow: {request.startDate} to {request.endDate}</p>}
+              {request.pickupPreference && <p>Pickup preference: {request.pickupPreference}</p>}
+              {request.purpose && <p>Purpose: {request.purpose}</p>}
+              {request.status === REQUEST_STATUS.approved && request.pickupLocation && (
+                <p>Pickup: {request.pickupDate} at {request.pickupTime}, {request.pickupLocation}</p>
+              )}
               {request.status === REQUEST_STATUS.pending && (
                 <div className="request-decision">
-                  <label>Pickup date <input type="date" value={pickup.date} onChange={e => setPickup({ ...pickup, date: e.target.value })} /></label>
-                  <label>Pickup time <input type="time" value={pickup.time} onChange={e => setPickup({ ...pickup, time: e.target.value })} /></label>
-                  <label>Pickup location <input type="text" value={pickup.location} onChange={e => setPickup({ ...pickup, location: e.target.value })} /></label>
+                  <label>Pickup date <input type="date" value={pickupByRequest[request.id]?.date || ''}
+                    onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], date: e.target.value } }))} /></label>
+                  <label>Pickup time <input type="time" value={pickupByRequest[request.id]?.time || ''}
+                    onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], time: e.target.value } }))} /></label>
+                  <label>Pickup location <input type="text" value={pickupByRequest[request.id]?.location || ''}
+                    onChange={e => setPickupByRequest(prev => ({ ...prev, [request.id]: { ...prev[request.id], location: e.target.value } }))} /></label>
                   <button type="button" disabled={Boolean(busyId)} onClick={() => decide(request, 'approve')}>Approve</button>
                   <button type="button" disabled={Boolean(busyId)} onClick={() => decide(request, 'decline')}>Decline</button>
                 </div>
