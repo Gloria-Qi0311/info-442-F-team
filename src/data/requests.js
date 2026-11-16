@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   query,
   runTransaction,
   serverTimestamp,
@@ -127,6 +128,35 @@ export async function markRequestsViewed(requests) {
     unviewed.map((request) => updateDoc(doc(db, COLLECTIONS.requests, request.id), {
       viewedByOwner: true,
     })),
+  );
+}
+
+// Issue #17 (H8–H10): every request the user has sent, newest first.
+export async function getMySentRequests(requesterId) {
+  const snap = await getDocs(query(
+    collection(db, COLLECTIONS.requests),
+    where('requesterId', '==', requesterId),
+  ));
+  const requests = snap.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+  requests.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
+  return requests;
+}
+
+// Issue #17 (H4): live count of Pending requests on the user's listings that
+// the user has not viewed yet. Returns the unsubscribe function.
+export function watchUnviewedRequestCount(ownerId, onCount) {
+  return onSnapshot(
+    query(
+      collection(db, COLLECTIONS.requests),
+      where('ownerId', '==', ownerId),
+      where('status', '==', REQUEST_STATUS.pending),
+      where('viewedByOwner', '==', false),
+    ),
+    (snap) => onCount(snap.size),
+    (cause) => {
+      console.error('Could not load unviewed requests:', cause);
+      onCount(0);
+    },
   );
 }
 
