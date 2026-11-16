@@ -6,6 +6,15 @@ import { cancelItemRequest } from '../data/requests';
 import { REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
 
+function elapsedTime(createdAt) {
+  if (!createdAt?.toDate) return '';
+  const minutes = Math.max(0, Math.floor((Date.now() - createdAt.toDate().getTime()) / 60000));
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hours ago`;
+  return `${Math.floor(hours / 24)} days ago`;
+}
+
 export default function BorrowRequestStatus() {
   const { listingId } = useParams();
   const { user } = useAuth();
@@ -45,13 +54,16 @@ export default function BorrowRequestStatus() {
         <p>No borrowing request found. <Link to={`/listings/${listingId}/borrow`}>Send a request</Link></p>
       ) : (
         <section className="item-request">
+          <p><strong>Item:</strong> {request.listingTitle || 'Untitled item'}</p>
           <p><strong>Status:</strong> {status}</p>
           <p><strong>Borrowing dates:</strong> {request.startDate} to {request.endDate}</p>
           <p><strong>Pickup preference:</strong> {request.pickupPreference}</p>
           <p><strong>Purpose:</strong> {request.purpose}</p>
           {status === REQUEST_STATUS.pending && (
             <>
-              <p>Waiting for the item owner to respond.</p>
+              {elapsedTime(request.createdAt) && <p>Sent {elapsedTime(request.createdAt)}</p>}
+              <h2>What's next?</h2>
+              <p>Waiting for the lender to respond. If approved, pickup details will appear here.</p>
               <button type="button" disabled={busy} onClick={cancel}>
                 {busy ? 'Canceling...' : 'Cancel request'}
               </button>
