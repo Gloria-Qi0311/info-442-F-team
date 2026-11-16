@@ -3,10 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { requestIdFor } from '../data/requests';
-import { COLLECTIONS } from '../data/schema';
-import { cancelItemRequest } from '../data/requests';
-import { REQUEST_STATUS } from '../data/schema';
+import { cancelItemRequest, requestIdFor } from '../data/requests';
+import { COLLECTIONS, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
 
 function elapsedTime(createdAt) {
@@ -84,6 +82,7 @@ export default function BorrowRequestStatus() {
               {request.pickupDate && <p><strong>Pickup date:</strong> {request.pickupDate}</p>}
               {request.pickupTime && <p><strong>Pickup time:</strong> {request.pickupTime}</p>}
               {request.pickupLocation && <p><strong>Pickup location:</strong> {request.pickupLocation}</p>}
+              <p><Link to="/manage">Go to Manage to follow your borrowing progress</Link></p>
             </>
           )}
           {status === REQUEST_STATUS.declined && <p>The item owner declined your request.</p>}
