@@ -105,9 +105,7 @@ function RequestPanel({ listing, available }) {
     }
   }
 
-  if (listing.type !== LISTING_TYPES.sell && listing.type !== LISTING_TYPES.give) {
-    return null;
-  }
+
 
   if (isOwner) {
     return (
@@ -118,6 +116,10 @@ function RequestPanel({ listing, available }) {
         </Link>
       </section>
     );
+  }
+
+  if (listing.type === LISTING_TYPES.lend) {
+    return <section className="item-request">{available ? <Link className="item-request-link" to={`/listings/${listing.id}/borrow`}>Send request!</Link> : <p>This item is unavailable.</p>}{!available && <Link to={`/listings/${listing.id}/borrow/status`}>View my borrowing request</Link>}</section>;
   }
 
   if (loading) {
