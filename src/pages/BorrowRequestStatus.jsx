@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { getBorrowRequest } from '../data/borrowRequests';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+import { requestIdFor } from '../data/requests';
+import { COLLECTIONS } from '../data/schema';
 import { cancelItemRequest } from '../data/requests';
 import { REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
@@ -24,12 +27,18 @@ export default function BorrowRequestStatus() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    let active = true;
-    getBorrowRequest(listingId, user.uid)
-      .then(value => { if (active) setRequest(value); })
-      .catch(() => { if (active) setError('Could not load request.'); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    setLoading(true);
+    setError('');
+    const requestRef = doc(db, COLLECTIONS.requests, requestIdFor(listingId, user.uid));
+    const unsubscribe = onSnapshot(requestRef, snap => {
+      setRequest(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+      setLoading(false);
+    }, cause => {
+      console.error('Could not load borrowing request:', cause);
+      setError('Could not load request.');
+      setLoading(false);
+    });
+    return unsubscribe;
   }, [listingId, user]);
 
   async function cancel() {
