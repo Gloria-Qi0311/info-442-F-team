@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { getListing } from '../data/listings';
 import { getRequestsForListing, markRequestsViewed } from '../data/requests';
-import { LISTING_TYPES } from '../data/schema';
+import { LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
+import { decideItemRequest } from '../data/requestDecisions';
 import './ItemDetails.css';
 
 // Issue #14: sellers (S3) and givers (G3) see the requests for one of their listings.
@@ -26,6 +27,8 @@ export default function ListingRequests() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState('');
+  const [pickup, setPickup] = useState({ date: '', time: '', location: '' });
 
   useEffect(() => {
     let active = true;
@@ -60,7 +63,22 @@ export default function ListingRequests() {
     return () => { active = false; };
   }, [listingId, user]);
 
-  const pageText = PAGE_TEXT[type];
+  async function decide(request, decision) {
+    setBusyId(request.id);
+    setError('');
+    try {
+      await decideItemRequest(request.id, user.uid, decision, pickup);
+      setRequests(await getRequestsForListing(listingId, user.uid));
+    } catch (cause) {
+      setError(cause.message || 'Could not update request. Please try again.');
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  const pageText = PAGE_TEXT[type] || (type === LISTING_TYPES.lend
+    ? { heading: 'Borrowing requests', requester: 'Borrower' }
+    : null);
   if (!pageText) {
     return (
       <main className="page">
@@ -97,6 +115,15 @@ export default function ListingRequests() {
                   {request.status}
                 </span>
               </div>
+              {request.status === REQUEST_STATUS.pending && (
+                <div className="request-decision">
+                  <label>Pickup date <input type="date" value={pickup.date} onChange={e => setPickup({ ...pickup, date: e.target.value })} /></label>
+                  <label>Pickup time <input type="time" value={pickup.time} onChange={e => setPickup({ ...pickup, time: e.target.value })} /></label>
+                  <label>Pickup location <input type="text" value={pickup.location} onChange={e => setPickup({ ...pickup, location: e.target.value })} /></label>
+                  <button type="button" disabled={Boolean(busyId)} onClick={() => decide(request, 'approve')}>Approve</button>
+                  <button type="button" disabled={Boolean(busyId)} onClick={() => decide(request, 'decline')}>Decline</button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
