@@ -79,6 +79,8 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.type
           == request.resource.data.listingType
         && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status
+          == 'Active'
+        && getAfter(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status
           == 'Active';
 
       allow update: if isUwUser() && (
@@ -104,6 +106,7 @@ service cloud.firestore {
             || (
               get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
               && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Unavailable'
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == id
             )))
         ||
         (isListingOwner()
