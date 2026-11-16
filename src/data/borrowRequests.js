@@ -34,7 +34,7 @@ export async function sendBorrowRequest(listingId, user, values) {
     if (existing.exists() && existing.data().status === REQUEST_STATUS.declined) {
       throw new Error('Your previous request was declined.');
     }
-    tx.set(requestRef, {
+    const requestData = {
       listingId, listingType: LISTING_TYPES.lend,
       listingTitle: listing.title, ownerId: listing.ownerId,
       requesterId: user.uid, requesterName: user.displayName || 'UW Student',
@@ -42,7 +42,12 @@ export async function sendBorrowRequest(listingId, user, values) {
       startDate: values.startDate, endDate: values.endDate,
       pickupPreference: values.pickupPreference.trim(), purpose: values.purpose.trim(),
       createdAt: serverTimestamp(),
-    }, { merge: true });
+    };
+    if (existing.exists()) {
+      tx.update(requestRef, requestData);
+    } else {
+      tx.set(requestRef, requestData);
+    }
     return requestRef.id;
   });
 }
