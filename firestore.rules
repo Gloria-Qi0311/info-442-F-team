@@ -34,7 +34,26 @@ service cloud.firestore {
     match /listings/{id} {
       allow read: if isUwUser();
       allow create: if isUwUser() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
+      // Listing approval must be paired with a matching request transition.
+      allow update: if isUwUser() && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['title', 'description', 'category', 'condition',
+                    'photoUrl', 'price', 'pickupAreaId', 'availableFrom',
+                    'availableUntil', 'timeSlot', 'ownerName']);
+      allow update: if isUwUser() && resource.data.ownerId == request.auth.uid
+        && resource.data.status == 'Active'
+        && request.resource.data.status == 'Unavailable'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'approvedRequestId'])
+        && request.resource.data.approvedRequestId is string
+        && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.status
+          == 'Approved'
+        && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.listingId
+          == id
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.status
+          == 'Pending';
+      allow delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
       // LS9: any UW user may only flip an expired Active listing to Inactive.
       // availableUntil ends at Seattle midnight (UTC-8/-7); +8h keeps it from expiring early.
       allow update: if isUwUser()
