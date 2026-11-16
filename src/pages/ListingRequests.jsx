@@ -30,6 +30,7 @@ export default function ListingRequests() {
   const [busyId, setBusyId] = useState('');
   const [pickupByRequest, setPickupByRequest] = useState({});
   const [actionError, setActionError] = useState('');
+  const pendingRequests = requests.filter(request => request.status === REQUEST_STATUS.pending);
 
   useEffect(() => {
     let active = true;
@@ -102,11 +103,11 @@ export default function ListingRequests() {
         <p role="status">Loading requests...</p>
       ) : error ? (
         <p role="alert" className="error">{error}</p>
-      ) : requests.length === 0 ? (
-        <p role="status">No requests for this item yet.</p>
+      ) : pendingRequests.length === 0 ? (
+        <p role="status">No pending requests</p>
       ) : (
         <ul className="item-details-fields listing-requests">
-          {requests.map((request) => (
+          {pendingRequests.map((request) => (
             <li key={request.id} className="item-details-field">
               <div>
                 <strong>{pageText.requester}:</strong> {request.requesterName || 'UW Student'}
