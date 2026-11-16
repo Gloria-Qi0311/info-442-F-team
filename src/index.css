@@ -29,6 +29,10 @@ button:disabled { opacity: 0.6; }
   color: #555; text-decoration: none; font-weight: 600;
 }
 .home-bar-link.active { color: var(--purple); }
+.home-bar-badge {
+  margin-left: 6px; min-width: 20px; padding: 0 6px; border-radius: 999px;
+  background: #c62828; color: #fff; font-size: 0.75rem; line-height: 20px; text-align: center;
+}
 .placeholder { color: #666; }
 .link-list { list-style: none; padding: 0; }
 .link-list li { margin: 12px 0; }
