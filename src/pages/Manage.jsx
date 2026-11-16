@@ -58,7 +58,7 @@ function SentRequests() {
       {requests.map((request) => (
         <li key={request.id} className="item-details-field">
           <div>
-            <Link className="item-request-link" to={`/listings/${request.listingId}`}>
+            <Link className="item-request-link" to={request.listingType === LISTING_TYPES.lend ? `/listings/${request.listingId}/borrow/status` : `/listings/${request.listingId}`}>
               {request.listingTitle || 'Untitled item'}
             </Link>
             <div className="listing-request-date">
