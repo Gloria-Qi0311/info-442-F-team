@@ -119,7 +119,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'stage', 'viewedByOwner', 'createdAt',
                       'startDate', 'endDate', 'pickupPreference', 'purpose',
-                      'requesterName', 'listingTitle']))
+                      'requesterName', 'listingTitle', 'cancelledAt']))
         ||
         (isListingOwner()
           && resource.data.status == 'Pending'
