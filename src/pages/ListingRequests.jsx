@@ -46,7 +46,7 @@ export default function ListingRequests() {
       try {
         const result = await getListing(listingId);
         if (!active) return;
-        if (!result || result.ownerId !== user.uid) {
+        if (!result || result.ownerId !== user.uid || result.type !== type) {
           setError('This listing could not be found in your listings.');
           return;
         }
