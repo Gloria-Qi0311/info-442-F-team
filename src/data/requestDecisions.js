@@ -6,8 +6,13 @@ import { COLLECTIONS, LISTING_STATUS, REQUEST_STATUS } from './schema';
 // All known pending requests are updated in the same transaction as the listing.
 export async function decideItemRequest(requestId, ownerId, decision, pickup = {}) {
   if (!['approve', 'decline'].includes(decision)) throw new Error('Invalid decision.');
-  if (decision === 'approve' && (!pickup.date || !pickup.time || !pickup.location?.trim())) {
-    throw new Error('Please enter the pickup date, time, and location.');
+  if (decision === 'approve') {
+    if (!pickup.date) throw new Error('Please enter a pickup date.');
+    if (!pickup.time) throw new Error('Please enter a pickup time.');
+    if (!pickup.location?.trim()) throw new Error('Please enter a pickup location.');
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (pickup.date < today) throw new Error('Pickup date must be today or later.');
   }
   const requestRef = doc(db, COLLECTIONS.requests, requestId);
   // The first read identifies the listing; the transaction verifies it again.
@@ -31,6 +36,7 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
     const request = requestSnap.data();
     if (listing.ownerId !== ownerId || request.ownerId !== ownerId) throw new Error('Only the item owner can respond.');
     if (request.listingId !== initial.listingId) throw new Error('The request has changed. Refresh and try again.');
+    if (request.status === REQUEST_STATUS.cancelled) throw new Error('This request was canceled.');
     if (request.status !== REQUEST_STATUS.pending) throw new Error('This request is no longer pending.');
     if (decision === 'approve' && listing.status !== LISTING_STATUS.active) {
       throw new Error('This item is no longer available.');
