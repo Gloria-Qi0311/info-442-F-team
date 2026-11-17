@@ -396,3 +396,23 @@ test('a user cannot increase their points without a completed transaction record
   const requester = uwContext('requester-1');
   await assertFails(updateDoc(doc(requester, 'users/requester-1'), { totalPoints: 500 }));
 });
+
+test('canceled requests can be re-submitted only with an atomic listing version increment', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Canceled', stage: null,
+      createdAt: new Date(), cancelledAt: new Date(),
+    });
+  });
+  const requester = uwContext('requester-1');
+  await assertFails(updateDoc(doc(requester, 'requests/item-1_requester-1'), {
+    status: 'Pending',
+  }));
+  const batch = writeBatch(requester);
+  batch.update(doc(requester, 'listings/item-1'), { requestVersion: 1 });
+  batch.update(doc(requester, 'requests/item-1_requester-1'), {
+    status: 'Pending', cancelledAt: null, createdAt: new Date(),
+  });
+  await assertSucceeds(batch.commit());
+});
