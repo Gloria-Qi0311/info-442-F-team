@@ -369,7 +369,7 @@ test('completed transaction awards points once and allows only participant ratin
   const owner = uwContext('owner-1');
   const requester = uwContext('requester-1');
   const points = writeBatch(owner);
-  points.update(doc(owner, 'users/owner-1'), { totalPoints: 10 });
+  points.update(doc(owner, 'users/owner-1'), { totalPoints: 10, lastPointsRequestId: 'item-1_requester-1' });
   points.set(doc(owner, 'pointsRecords/item-1_requester-1_owner-1'), {
     requestId: 'item-1_requester-1', userId: 'owner-1', points: 10,
     reason: 'Completed borrowing transaction', createdAt: new Date(),
@@ -387,4 +387,12 @@ test('completed transaction awards points once and allows only participant ratin
     requestId: 'item-1_requester-1', raterId: 'outsider', rateeId: 'owner-1',
     stars: 5, tags: [], createdAt: new Date(),
   }));
+});
+
+test('a user cannot increase their points without a completed transaction record', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'users/requester-1'), { totalPoints: 0 });
+  });
+  const requester = uwContext('requester-1');
+  await assertFails(updateDoc(doc(requester, 'users/requester-1'), { totalPoints: 500 }));
 });
