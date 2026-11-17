@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { getMySentRequests } from '../data/requests';
-import { LISTING_TYPES } from '../data/schema';
+import { LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
 
 const LISTING_LINKS = [
@@ -58,7 +58,7 @@ function SentRequests() {
       {requests.map((request) => (
         <li key={request.id} className="item-details-field">
           <div>
-            <Link className="item-request-link" to={request.listingType === LISTING_TYPES.lend ? `/listings/${request.listingId}/borrow/status` : `/listings/${request.listingId}`}>
+            <Link className="item-request-link" to={request.listingType === LISTING_TYPES.lend && request.status === REQUEST_STATUS.approved ? `/transactions/borrower/${request.id}` : request.listingType === LISTING_TYPES.lend ? `/listings/${request.listingId}/borrow/status` : `/listings/${request.listingId}` }>
               {request.listingTitle || 'Untitled item'}
             </Link>
             <div className="listing-request-date">
