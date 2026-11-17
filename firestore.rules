@@ -41,6 +41,22 @@ service cloud.firestore {
           .hasOnly(['title', 'description', 'category', 'condition',
                     'photoUrl', 'price', 'pickupAreaId', 'availableFrom',
                     'availableUntil', 'timeSlot', 'ownerName']);
+      // A requester may increment the listing version only in the same atomic
+      // write that creates (or re-submits) their own Pending request. This lets
+      // the owner approval flow detect requests that arrive during approval.
+      allow update: if isUwUser()
+        && resource.data.status == 'Active'
+        && request.resource.data.status == 'Active'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requestVersion'])
+        && request.resource.data.requestVersion is int
+        && request.resource.data.requestVersion == (resource.data.requestVersion is int ? resource.data.requestVersion : 0) + 1
+        && (!exists(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid))
+          || get(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.status == 'Canceled')
+        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.status == 'Pending'
+        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.listingId == id
+        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.requesterId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.ownerId == resource.data.ownerId;
+
       allow update: if isUwUser() && resource.data.ownerId == request.auth.uid
         && resource.data.status == 'Active'
         && request.resource.data.status == (resource.data.type == 'lend' ? 'On Loan'
