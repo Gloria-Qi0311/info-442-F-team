@@ -20,6 +20,17 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // Only the uploading UW user can create confirmation images in their folder.
+    match /confirmationPhotos/{uid}/{requestId}/{kind}/{fileName} {
+      allow read: if isUwUser();
+      allow create: if isUwUser()
+        && request.auth.uid == uid
+        && kind in ['pickup', 'return']
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.size < 10 * 1024 * 1024;
+      allow update, delete: if false;
+    }
+
     match /{allPaths=**} {
       allow read, write: if false;
     }
