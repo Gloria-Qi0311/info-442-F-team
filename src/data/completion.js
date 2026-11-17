@@ -73,7 +73,7 @@ export async function awardCompletionPoints(requestId, uid) {
     const previous = userSnap.exists() ? Number(userSnap.data().totalPoints) || 0 : 0;
     if (recordSnap.exists()) return previous;
     const points = request.ownerId === uid ? 10 : 5;
-    tx.set(userRef, { totalPoints: previous + points }, { merge: true });
+    tx.set(userRef, { totalPoints: previous + points, lastPointsRequestId: requestId }, { merge: true });
     tx.set(recordRef, {
       requestId, userId: uid, points,
       reason: 'Completed borrowing transaction', createdAt: serverTimestamp(),
