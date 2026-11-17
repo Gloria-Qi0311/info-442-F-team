@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { getListing } from '../data/listings';
 import { getRequestsForListing, markRequestsViewed } from '../data/requests';
@@ -23,6 +23,7 @@ function sentDate(value) {
 
 export default function ListingRequests() {
   const { type, listingId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [listing, setListing] = useState(null);
   const [requests, setRequests] = useState([]);
@@ -82,6 +83,9 @@ export default function ListingRequests() {
       if (decision === 'approve') await reconcilePendingRequests(listingId, user.uid);
       setRequests(await getRequestsForListing(listingId, user.uid));
       setApprovingId('');
+      if (decision === 'approve' && type === LISTING_TYPES.lend) {
+        navigate(`/transactions/lender/${request.id}`);
+      }
     } catch (cause) {
       setActionError(cause.message || 'Could not update request. Please try again.');
     } finally {
@@ -112,8 +116,15 @@ export default function ListingRequests() {
         <p role="status">Loading requests...</p>
       ) : error ? (
         <p role="alert" className="error">{error}</p>
+      ) : !requests.some(request => request.status === REQUEST_STATUS.pending) && type === LISTING_TYPES.lend ? (
+        <>
+          <p role="status">No pending requests</p>
+          {requests.filter(request => request.status === REQUEST_STATUS.approved).map(request => (
+            <p key={request.id}><Link to={`/transactions/lender/${request.id}`}>View Ongoing Borrowing: {request.listingTitle || 'Item'}</Link></p>
+          ))}
+        </>
       ) : requests.length === 0 ? (
-        <p role="status">No requests yet</p>
+        <p role="status">No pending requests</p>
       ) : (
         <ul className="item-details-fields listing-requests">
           {requests.map((request) => (
@@ -145,6 +156,9 @@ export default function ListingRequests() {
               {request.startDate && <p>Borrow: {request.startDate} to {request.endDate}</p>}
               {request.pickupPreference && <p>Pickup preference: {request.pickupPreference}</p>}
               {request.purpose && <p>Purpose: {request.purpose}</p>}
+              {type === LISTING_TYPES.lend && request.status === REQUEST_STATUS.approved && (
+                <p><Link to={`/transactions/lender/${request.id}`}>View Ongoing Borrowing</Link></p>
+              )}
               {request.status === REQUEST_STATUS.approved && request.pickupLocation && (
                 <p>Pickup: {request.pickupDate} at {request.pickupTime}, {request.pickupLocation}</p>
               )}
