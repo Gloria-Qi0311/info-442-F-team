@@ -125,7 +125,10 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status
           == 'Active'
         && getAfter(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status
-          == 'Active';
+          == 'Active'
+        && getAfter(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion
+          == (get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion is int
+            ? get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion : 0) + 1;
 
       allow update: if isUwUser() && (
         (isRequester()
@@ -139,6 +142,9 @@ service cloud.firestore {
           && request.resource.data.status == 'Pending'
           && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+          && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion
+            == (resource.data.listingId != '' && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion is int
+              ? get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion : 0) + 1
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'stage', 'viewedByOwner', 'createdAt',
                       'startDate', 'endDate', 'pickupPreference', 'purpose',
