@@ -10,6 +10,7 @@ import ItemDetails from './pages/ItemDetails';
 import BorrowRequestForm from './pages/BorrowRequestForm';
 import BorrowRequestStatus from './pages/BorrowRequestStatus';
 import OngoingBorrowing from './pages/OngoingBorrowing';
+import ReturnComplete from './pages/ReturnComplete';
 import Account from './pages/Account';
 import PostItem from './pages/PostItem';
 import ListingForm from './pages/ListingForm';
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="/listings/:listingId/borrow/status" element={<BorrowRequestStatus />} />
             <Route path="/listings/:listingId/confirmation" element={<ListingConfirmation />} />
             <Route path="/transactions/:role/:requestId" element={<OngoingBorrowing />} />
+            <Route path="/transactions/:role/:requestId/complete" element={<ReturnComplete />} />
             <Route path="/transactions/:role/:requestId/:action" element={<OngoingBorrowing />} />
             <Route path="/dev/db-check" element={<DbCheck />} />
           </Route>
