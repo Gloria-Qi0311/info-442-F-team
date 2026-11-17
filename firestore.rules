@@ -216,7 +216,10 @@ service cloud.firestore {
         return get(/databases/$(database)/documents/requests/$(request.resource.data.requestId));
       }
       // get must also work for not-yet-created confirmation documents.
-      allow get: if isUwUser();
+      allow get: if isUwUser()
+        && (resource == null || (
+          get(/databases/$(database)/documents/requests/$(resource.data.requestId)).data.ownerId == request.auth.uid
+          || get(/databases/$(database)/documents/requests/$(resource.data.requestId)).data.requesterId == request.auth.uid));
       allow list: if false;
       allow create: if isUwUser()
         && request.resource.data.keys().hasOnly(['requestId', 'userId', 'kind', 'photoUrl', 'createdAt'])
