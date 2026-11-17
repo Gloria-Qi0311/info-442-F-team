@@ -259,6 +259,7 @@ service cloud.firestore {
         )
         && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.totalPoints
           == (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && 'totalPoints' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
             ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.totalPoints : 0)
             + request.resource.data.points;
       allow update, delete: if false;
