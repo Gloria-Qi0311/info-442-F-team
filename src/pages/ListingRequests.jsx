@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { getListing } from '../data/listings';
-import { getRequestsForListing, markRequestsViewed } from '../data/requests';
+import { getRequestsForListing, markRequestsViewed, watchRequestsForListing } from '../data/requests';
 import { LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import { decideItemRequest, reconcilePendingRequests } from '../data/requestDecisions';
 import { getRequesterRatingSummary } from '../data/requestRatings';
@@ -37,6 +37,7 @@ export default function ListingRequests() {
 
   useEffect(() => {
     let active = true;
+    let unsubscribe = () => {};
 
     async function load() {
       setLoading(true);
@@ -53,16 +54,25 @@ export default function ListingRequests() {
         setListing(result);
 
         await reconcilePendingRequests(listingId, user.uid);
-        const received = await getRequestsForListing(listingId, user.uid);
         if (!active) return;
-        setRequests(received);
-        const borrowerIds = [...new Set(received.filter(request => request.status === REQUEST_STATUS.pending).map(request => request.requesterId))];
-        const summaries = await Promise.all(borrowerIds.map(async id => {
-          try { return [id, await getRequesterRatingSummary(id)]; }
-          catch (cause) { console.error('Could not load borrower rating:', cause); return [id, null]; }
-        }));
-        if (active) setRatings(Object.fromEntries(summaries));
-        markRequestsViewed(received);
+        unsubscribe = watchRequestsForListing(listingId, user.uid, async received => {
+          if (!active) return;
+          setRequests(received);
+          setLoading(false);
+          const pending = received.filter(request => request.status === REQUEST_STATUS.pending);
+          const borrowerIds = [...new Set(pending.map(request => request.requesterId))];
+          const summaries = await Promise.all(borrowerIds.map(async id => {
+            try { return [id, await getRequesterRatingSummary(id)]; }
+            catch (cause) { console.error('Could not load borrower rating:', cause); return [id, null]; }
+          }));
+          if (active) setRatings(Object.fromEntries(summaries));
+          if (pending.length) markRequestsViewed(pending);
+        }, () => {
+          if (active) {
+            setError('Could not load requests. Please try again.');
+            setLoading(false);
+          }
+        });
       } catch (cause) {
         console.error('Could not load requests:', cause);
         if (active) setError('Could not load requests. Please try again.');
@@ -72,7 +82,7 @@ export default function ListingRequests() {
     }
 
     if (user) load();
-    return () => { active = false; };
+    return () => { active = false; unsubscribe(); };
   }, [listingId, user, type]);
 
   async function decide(request, decision) {
@@ -127,7 +137,7 @@ export default function ListingRequests() {
         <p role="status">No pending requests</p>
       ) : (
         <ul className="item-details-fields listing-requests">
-          {requests.map((request) => (
+          {requests.filter(request => request.status === REQUEST_STATUS.pending || request.status === REQUEST_STATUS.approved).map((request) => (
             <li key={request.id} className="item-details-field">
               <div>
                 <strong>{pageText.requester}:</strong> {request.requesterName || 'UW Student'}
