@@ -126,10 +126,10 @@ export default function ListingRequests() {
         <p role="status">Loading requests...</p>
       ) : error ? (
         <p role="alert" className="error">{error}</p>
-      ) : !requests.some(request => request.status === REQUEST_STATUS.pending) && type === LISTING_TYPES.lend ? (
+      ) : !requests.some(request => request.status === REQUEST_STATUS.pending) ? (
         <>
           <p role="status">No pending requests</p>
-          {requests.filter(request => request.status === REQUEST_STATUS.approved).map(request => (
+          {type === LISTING_TYPES.lend && requests.filter(request => request.status === REQUEST_STATUS.approved).map(request => (
             <p key={request.id}><Link to={`/transactions/lender/${request.id}`}>View Ongoing Borrowing: {request.listingTitle || 'Item'}</Link></p>
           ))}
         </>
@@ -145,9 +145,8 @@ export default function ListingRequests() {
                   <div className="listing-request-date">Sent {sentDate(request.createdAt)}</div>
                 )}
               </div>
-              {type === LISTING_TYPES.lend && (
-                <div>
-                  <strong>Borrower rating:</strong>{' '}
+              <div>
+                  <strong>{pageText.requester} rating:</strong>{' '}
                   {ratings[request.requesterId]?.average != null
                     ? `${ratings[request.requesterId].average.toFixed(1)} / 5 stars`
                     : 'No ratings yet'}
@@ -157,7 +156,6 @@ export default function ListingRequests() {
                       : 'No tags yet'}
                   </p>
                 </div>
-              )}
               <div>
                 <span className={`request-status request-status-${String(request.status).toLowerCase()}`}>
                   {request.status}
@@ -194,7 +192,7 @@ export default function ListingRequests() {
                   )}
                   {approvingId !== request.id && (
                     <button type="button" disabled={Boolean(busyId)}
-                      onClick={() => { setActionError(''); setApprovingId(request.id); }}>Approve</button>
+                      onClick={() => { setActionError(''); setApprovingId(request.id); }}>{type === LISTING_TYPES.sell ? 'Accept' : 'Approve'}</button>
                   )}
                   <button type="button" disabled={Boolean(busyId)}
                     onClick={() => decide(request, 'decline')}>Decline</button>
