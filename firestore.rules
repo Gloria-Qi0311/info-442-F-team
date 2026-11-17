@@ -35,8 +35,10 @@ service cloud.firestore {
           || request.resource.data.totalPoints == 0
           || pointsAwarded(0));
       allow update: if isUwUser() && request.auth.uid == uid
-        && (request.resource.data.totalPoints == resource.data.totalPoints
-          || pointsAwarded(resource.data.totalPoints));
+        && ((!('totalPoints' in resource.data) && !('totalPoints' in request.resource.data))
+          || ('totalPoints' in resource.data && 'totalPoints' in request.resource.data
+            && request.resource.data.totalPoints == resource.data.totalPoints)
+          || pointsAwarded(('totalPoints' in resource.data) ? resource.data.totalPoints : 0));
       allow delete: if false;
     }
 
