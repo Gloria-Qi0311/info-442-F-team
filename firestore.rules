@@ -21,8 +21,22 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
+      function pointsAwarded(previous) {
+        return 'lastPointsRequestId' in request.resource.data
+          && request.resource.data.lastPointsRequestId is string
+          && !exists(/databases/$(database)/documents/pointsRecords/$(request.resource.data.lastPointsRequestId + '_' + uid))
+          && getAfter(/databases/$(database)/documents/pointsRecords/$(request.resource.data.lastPointsRequestId + '_' + uid)).data.userId == uid
+          && request.resource.data.totalPoints == previous
+            + getAfter(/databases/$(database)/documents/pointsRecords/$(request.resource.data.lastPointsRequestId + '_' + uid)).data.points;
+      }
       allow read: if isUwUser();
-      allow create, update: if isUwUser() && request.auth.uid == uid;
+      allow create: if isUwUser() && request.auth.uid == uid
+        && (!('totalPoints' in request.resource.data)
+          || request.resource.data.totalPoints == 0
+          || pointsAwarded(0));
+      allow update: if isUwUser() && request.auth.uid == uid
+        && (request.resource.data.totalPoints == resource.data.totalPoints
+          || pointsAwarded(resource.data.totalPoints));
       allow delete: if false;
     }
 
@@ -230,6 +244,7 @@ service cloud.firestore {
         && request.resource.data.stars <= 5
         && request.resource.data.tags is list
         && request.resource.data.tags.size() <= 4
+        && request.resource.data.tags.hasOnly(['On time', 'Polite', 'Gentle use', 'Quickly reply'])
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
