@@ -4,7 +4,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../auth/AuthContext';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from '../data/schema';
-import { confirmExchange, isParticipant, STAGES } from '../data/transactionProgress';
+import { confirmExchange, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
 import './ItemDetails.css';
 
 export default function OngoingBorrowing() {
@@ -17,6 +17,7 @@ export default function OngoingBorrowing() {
   const [busy, setBusy] = useState(false);
   const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState('');
+  const [myPickupConfirmed, setMyPickupConfirmed] = useState(false);
   const isOwner = role === 'lender';
   const validRole = role === 'lender' || role === 'borrower';
   const validAction = !action || action === 'pickup' || action === 'return';
@@ -30,6 +31,13 @@ export default function OngoingBorrowing() {
       setError('Could not load the transaction. Please try again.');
       setLoading(false);
     });
+  }, [requestId, user]);
+
+  useEffect(() => {
+    if (!user || !requestId) return undefined;
+    return onSnapshot(doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, PHOTO_KINDS.pickup, user.uid)), snap => {
+      setMyPickupConfirmed(snap.exists());
+    }, () => setMyPickupConfirmed(false));
   }, [requestId, user]);
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
@@ -81,7 +89,9 @@ export default function OngoingBorrowing() {
             ))}
           </ol>
           {action ? (
-            stage === expected ? (
+            action === PHOTO_KINDS.pickup && myPickupConfirmed ? (
+              <p>Your pickup is confirmed. Waiting for the other person to confirm.</p>
+            ) : stage === expected ? (
               <section className="item-request">
                 <label htmlFor="confirmation-photo">Photo of the item</label>
                 <input id="confirmation-photo" type="file" accept="image/*" onChange={event => {
@@ -98,7 +108,8 @@ export default function OngoingBorrowing() {
           ) : (
             <>
               {stage === TRANSACTION_STAGE.approved && (
-                <Link to={`${base}/pickup`}>Mark as picked up</Link>
+                myPickupConfirmed ? <p>Pickup confirmed. Waiting for the other person.</p>
+                  : <Link to={`${base}/pickup`}>Mark as picked up</Link>
               )}
               {stage === TRANSACTION_STAGE.pickup && (
                 <>
