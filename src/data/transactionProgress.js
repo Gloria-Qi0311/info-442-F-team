@@ -38,7 +38,8 @@ export async function confirmExchange(requestId, uid, kind, photo) {
   }
   const current = await getTransaction(requestId, uid);
   if (current.listingType !== LISTING_TYPES.lend) throw new Error('Only lending transactions use this confirmation.');
-  const expectedStage = kind === PHOTO_KINDS.pickup ? TRANSACTION_STAGE.approved : TRANSACTION_STAGE.pickup;
+  const expectedStage = kind === PHOTO_KINDS.pickup ? TRANSACTION_STAGE.approved
+    : uid === current.ownerId ? TRANSACTION_STAGE.return : TRANSACTION_STAGE.pickup;
   if ((current.stage || TRANSACTION_STAGE.approved) !== expectedStage) {
     throw new Error('This confirmation is not available at the current stage.');
   }
