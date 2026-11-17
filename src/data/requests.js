@@ -68,6 +68,13 @@ export async function sendItemRequest(listingId, requester) {
       // A canceled request can be sent again below.
     }
 
+    // Increment a listing-level version in the same transaction as the request.
+    // Approval uses this value to detect requests created while it is preparing
+    // the list of pending requests.
+    transaction.update(listingRef, {
+      requestVersion: (Number(listing.requestVersion) || 0) + 1,
+    });
+
     const request = {
       listingId,
       listingType: listing.type,
