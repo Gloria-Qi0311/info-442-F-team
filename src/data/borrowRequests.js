@@ -40,6 +40,12 @@ export async function sendBorrowRequest(listingId, user, values) {
     if (existing.exists() && existing.data().status === REQUEST_STATUS.declined) {
       throw new Error('Your previous request was declined.');
     }
+    // Keep a listing-level version in sync with every new pending request.
+    // The owner approval flow checks this version to catch requests submitted
+    // while it is collecting the pending request documents.
+    tx.update(listingRef, {
+      requestVersion: (Number(listing.requestVersion) || 0) + 1,
+    });
     const requestData = {
       listingId, listingType: LISTING_TYPES.lend,
       listingTitle: listing.title, ownerId: listing.ownerId,
