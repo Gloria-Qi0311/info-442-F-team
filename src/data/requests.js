@@ -132,6 +132,19 @@ export async function getRequestsForListing(listingId, ownerId) {
   return requests;
 }
 
+// Live owner request list: cancellation and approval appear without a refresh.
+export function watchRequestsForListing(listingId, ownerId, onChange, onError) {
+  return onSnapshot(query(
+    collection(db, COLLECTIONS.requests),
+    where('ownerId', '==', ownerId),
+    where('listingId', '==', listingId),
+  ), snapshot => {
+    const requests = snapshot.docs.map(entry => ({ id: entry.id, ...entry.data() }));
+    requests.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
+    onChange(requests);
+  }, onError);
+}
+
 // Marks the owner's unviewed requests as viewed once they open the request list,
 // so the "new requests" badge on Manage can count only unviewed ones.
 export async function markRequestsViewed(requests) {
