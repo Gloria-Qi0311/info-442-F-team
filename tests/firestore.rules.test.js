@@ -103,7 +103,7 @@ test('a requester cannot read or change another requester\'s request', async () 
   }));
 });
 
-test('only the listing owner can atomically approve and mark the listing unavailable', async () => {
+test('only the listing owner can atomically approve a borrow request and mark the listing On Loan', async () => {
   await testEnv.withSecurityRulesDisabled(async context => {
     await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
       listingId: 'item-1',
@@ -128,7 +128,7 @@ test('only the listing owner can atomically approve and mark the listing unavail
     pickupLocation: 'Suzzallo Library',
   });
   batch.update(doc(owner, 'listings/item-1'), {
-    status: 'Unavailable',
+    status: 'On Loan',
     approvedRequestId: 'item-1_requester-1',
   });
   await assertSucceeds(batch.commit());
@@ -250,7 +250,7 @@ test('approving one request declines every other pending request in the same ato
     decidedAt: new Date(),
   });
   batch.update(doc(owner, 'listings/item-1'), {
-    status: 'Unavailable',
+    status: 'On Loan',
     approvedRequestId: 'item-1_requester-1',
   });
   await assertSucceeds(batch.commit());
@@ -261,5 +261,37 @@ test('approving one request declines every other pending request in the same ato
   const declined = await getDoc(doc(requesterTwo, 'requests/item-1_requester-2'));
   if (approved.data().status !== 'Approved' || declined.data().status !== 'Declined') {
     throw new Error('Request statuses did not match the approval decision.');
+  }
+});
+
+
+test('purchase and giveaway approvals set their required listing statuses', async () => {
+  for (const [type, expectedStatus] of [['sell', 'Sold'], ['give', 'Given Away']]) {
+    await testEnv.clearFirestore();
+    await testEnv.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'listings/item-1'), { ...listing, type, status: 'Active' });
+      await setDoc(doc(db, 'requests/item-1_requester-1'), {
+        listingId: 'item-1',
+        listingType: type,
+        ownerId: 'owner-1',
+        requesterId: 'requester-1',
+        status: 'Pending',
+      });
+    });
+
+    const owner = uwContext('owner-1');
+    const batch = writeBatch(owner);
+    batch.update(doc(owner, 'requests/item-1_requester-1'), {
+      status: 'Approved',
+      pickupDate: '2026-11-20',
+      pickupTime: '15:00',
+      pickupLocation: 'Suzzallo Library',
+    });
+    batch.update(doc(owner, 'listings/item-1'), {
+      status: expectedStatus,
+      approvedRequestId: 'item-1_requester-1',
+    });
+    await assertSucceeds(batch.commit());
   }
 });
