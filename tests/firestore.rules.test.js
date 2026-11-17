@@ -47,7 +47,9 @@ after(async () => {
 
 test('verified UW requester can create their own pending request', async () => {
   const db = uwContext('requester-1');
-  await assertSucceeds(setDoc(doc(db, 'requests/item-1_requester-1'), {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'listings/item-1'), { requestVersion: 1 });
+  batch.set(doc(db, 'requests/item-1_requester-1'), {
     listingId: 'item-1',
     listingType: 'lend',
     ownerId: 'owner-1',
@@ -58,7 +60,8 @@ test('verified UW requester can create their own pending request', async () => {
     pickupPreference: 'After class',
     purpose: 'Course project',
     listingTitle: 'Test item',
-  }));
+  });
+  await assertSucceeds(batch.commit());
 });
 
 test('unverified or non-UW users cannot create requests', async () => {
