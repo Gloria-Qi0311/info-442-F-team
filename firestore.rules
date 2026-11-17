@@ -143,7 +143,7 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion
-            == (resource.data.listingId != '' && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion is int
+            == (get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion is int
               ? get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion : 0) + 1
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'stage', 'viewedByOwner', 'createdAt',
