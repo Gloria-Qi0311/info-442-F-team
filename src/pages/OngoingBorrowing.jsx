@@ -57,7 +57,7 @@ export default function OngoingBorrowing() {
     setError('');
     try {
       await confirmExchange(requestId, user.uid, action, photo);
-      navigate(base, { replace: true });
+      navigate(action === 'return' && isOwner ? `${base}/complete` : base, { replace: true });
     } catch (cause) {
       setError(cause.message || 'Could not confirm. Please try again.');
     } finally {
@@ -121,7 +121,9 @@ export default function OngoingBorrowing() {
                 <Link to={`${base}/return`}>Confirm return</Link>
               )}
               {stage === TRANSACTION_STAGE.return && !isOwner && <p>Waiting for the lender to confirm the return.</p>}
-              {stage === TRANSACTION_STAGE.received && <p>Return completed.</p>}
+              {stage === TRANSACTION_STAGE.received && (
+                <p>Return completed. <Link to={`${base}/complete`}>Rate {isOwner ? 'borrower' : 'lender'}</Link></p>
+              )}
             </>
           )}
         </>
