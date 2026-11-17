@@ -24,15 +24,24 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
     }
   }
   const requestRef = doc(db, COLLECTIONS.requests, requestId);
-  // The first read identifies the listing; the transaction verifies it again.
+  // Read the listing version before collecting pending requests. Every new
+  // request increments that version in its own transaction. The final approval
+  // transaction checks it again, so a request created during this window makes
+  // approval fail safely and asks the owner to refresh.
   const initial = await runTransaction(db, async tx => {
     const snap = await tx.get(requestRef);
     if (!snap.exists()) throw new Error('Request not found.');
-    return snap.data();
+    const request = snap.data();
+    const listingSnap = await tx.get(doc(db, COLLECTIONS.listings, request.listingId));
+    if (!listingSnap.exists()) throw new Error('Item not found.');
+    return {
+      request,
+      requestVersion: Number(listingSnap.data().requestVersion) || 0,
+    };
   });
-  const listingRef = doc(db, COLLECTIONS.listings, initial.listingId);
+  const listingRef = doc(db, COLLECTIONS.listings, initial.request.listingId);
   const pendingSnap = await getDocs(query(collection(db, COLLECTIONS.requests),
-    where('listingId', '==', initial.listingId), where('ownerId', '==', ownerId), where('status', '==', REQUEST_STATUS.pending)));
+    where('listingId', '==', initial.request.listingId), where('ownerId', '==', ownerId), where('status', '==', REQUEST_STATUS.pending)));
   const pendingRefs = pendingSnap.docs.map(snap => doc(db, COLLECTIONS.requests, snap.id));
 
   return runTransaction(db, async tx => {
@@ -44,7 +53,10 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
     const listing = listingSnap.data();
     const request = requestSnap.data();
     if (listing.ownerId !== ownerId || request.ownerId !== ownerId) throw new Error('Only the item owner can respond.');
-    if (request.listingId !== initial.listingId) throw new Error('The request has changed. Refresh and try again.');
+    if (request.listingId !== initial.request.listingId) throw new Error('The request has changed. Refresh and try again.');
+    if ((Number(listing.requestVersion) || 0) !== initial.requestVersion) {
+      throw new Error('New requests arrived while this page was open. Refresh and try again.');
+    }
     if (request.status === REQUEST_STATUS.cancelled) throw new Error('This request was canceled.');
     if (request.status !== REQUEST_STATUS.pending) throw new Error('This request is no longer pending.');
     if (decision === 'approve' && listing.status !== LISTING_STATUS.active) {
