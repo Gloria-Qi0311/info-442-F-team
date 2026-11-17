@@ -49,7 +49,7 @@ service cloud.firestore {
         && request.resource.data.status == 'Active'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requestVersion'])
         && request.resource.data.requestVersion is int
-        && request.resource.data.requestVersion == (resource.data.requestVersion is int ? resource.data.requestVersion : 0) + 1
+        && request.resource.data.requestVersion == (('requestVersion' in resource.data && resource.data.requestVersion is int) ? resource.data.requestVersion : 0) + 1
         && (!exists(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid))
           || get(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.status == 'Canceled')
         && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.status == 'Pending'
@@ -127,7 +127,8 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status
           == 'Active'
         && getAfter(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion
-          == (get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion is int
+          == (('requestVersion' in get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data
+            && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion is int)
             ? get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion : 0) + 1;
 
       allow update: if isUwUser() && (
@@ -143,7 +144,8 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion
-            == (get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion is int
+            == (('requestVersion' in get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data
+              && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion is int)
               ? get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion : 0) + 1
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'stage', 'viewedByOwner', 'createdAt',
