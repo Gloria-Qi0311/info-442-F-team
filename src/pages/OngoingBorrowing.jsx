@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from '../data/schema';
 import { confirmExchange, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
+import { awardCompletionPoints } from '../data/completion';
 import './ItemDetails.css';
 
 export default function OngoingBorrowing() {
@@ -39,6 +40,18 @@ export default function OngoingBorrowing() {
       setMyPickupConfirmed(snap.exists());
     }, () => setMyPickupConfirmed(false));
   }, [requestId, user]);
+
+  // Award points when an active participant sees the completed transaction,
+  // without requiring them to open the separate rating page. The award
+  // transaction is idempotent and cannot add points twice.
+  useEffect(() => {
+    if (!user || !request || request.stage !== TRANSACTION_STAGE.received
+      || request.status !== REQUEST_STATUS.approved || request.listingType !== LISTING_TYPES.lend
+      || !isParticipant(request, user.uid)) return;
+    awardCompletionPoints(requestId, user.uid).catch(cause => {
+      console.error('Could not award completion points:', cause);
+    });
+  }, [requestId, request, user]);
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
