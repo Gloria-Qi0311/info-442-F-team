@@ -416,3 +416,35 @@ test('canceled requests can be re-submitted only with an atomic listing version 
   });
   await assertSucceeds(batch.commit());
 });
+
+test('only transaction participants can read stored confirmation photos', async () => {
+  const requestId = 'item-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/' + requestId), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Pickup',
+    });
+    await setDoc(doc(db, 'confirmationPhotos/' + requestId + '_pickup_requester-1'), {
+      requestId, userId: 'requester-1', kind: 'pickup',
+      photoUrl: 'https://example.com/private.jpg', createdAt: new Date(),
+    });
+  });
+  const photoPath = 'confirmationPhotos/' + requestId + '_pickup_requester-1';
+  await assertSucceeds(getDoc(doc(uwContext('owner-1'), photoPath)));
+  await assertSucceeds(getDoc(doc(uwContext('requester-1'), photoPath)));
+  await assertFails(getDoc(doc(uwContext('outsider'), photoPath)));
+});
+
+test('borrower and lender cannot rate before the return is received', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Return',
+    });
+  });
+  await assertFails(setDoc(doc(uwContext('requester-1'), 'ratings/item-1_requester-1_requester-1'), {
+    requestId: 'item-1_requester-1', raterId: 'requester-1', rateeId: 'owner-1',
+    stars: 5, tags: ['Polite'], createdAt: new Date(),
+  }));
+});
