@@ -305,3 +305,54 @@ test('purchase and giveaway approvals set their required listing statuses', asyn
     await assertSucceeds(batch.commit());
   }
 });
+
+test('lending pickup needs both photos and return advances in the correct order', async () => {
+  const requestId = 'item-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/' + requestId), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
+    });
+  });
+  const borrower = uwContext('requester-1');
+  const owner = uwContext('owner-1');
+  const photo = (uid, kind) => ({
+    requestId, userId: uid, kind,
+    photoUrl: 'https://example.com/photo.jpg',
+    createdAt: new Date(),
+  });
+
+  await assertFails(updateDoc(doc(borrower, 'requests/' + requestId), { stage: 'Pickup' }));
+  await assertSucceeds(setDoc(doc(borrower, 'confirmationPhotos/' + requestId + '_pickup_requester-1'), photo('requester-1', 'pickup')));
+  await assertFails(updateDoc(doc(borrower, 'requests/' + requestId), { stage: 'Pickup' }));
+
+  const pickup = writeBatch(owner);
+  pickup.set(doc(owner, 'confirmationPhotos/' + requestId + '_pickup_owner-1'), photo('owner-1', 'pickup'));
+  pickup.update(doc(owner, 'requests/' + requestId), { stage: 'Pickup' });
+  await assertSucceeds(pickup.commit());
+
+  await assertFails(updateDoc(doc(owner, 'requests/' + requestId), { stage: 'Received' }));
+  const returning = writeBatch(borrower);
+  returning.set(doc(borrower, 'confirmationPhotos/' + requestId + '_return_requester-1'), photo('requester-1', 'return'));
+  returning.update(doc(borrower, 'requests/' + requestId), { stage: 'Return' });
+  await assertSucceeds(returning.commit());
+
+  const receiving = writeBatch(owner);
+  receiving.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), photo('owner-1', 'return'));
+  receiving.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
+  await assertSucceeds(receiving.commit());
+});
+
+test('unrelated users cannot create transaction confirmation photos', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
+    });
+  });
+  const outsider = uwContext('outsider');
+  await assertFails(setDoc(doc(outsider, 'confirmationPhotos/item-1_requester-1_pickup_outsider'), {
+    requestId: 'item-1_requester-1', userId: 'outsider', kind: 'pickup',
+    photoUrl: 'https://example.com/photo.jpg', createdAt: new Date(),
+  }));
+});
