@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { COLLECTIONS, LISTING_STATUS, REQUEST_STATUS } from './schema';
+import { COLLECTIONS, LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from './schema';
 
 // Approve or decline a request. Only the listing owner may make this decision.
 // All known pending requests are updated in the same transaction as the listing.
@@ -74,7 +74,15 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
         } : {}),
       });
     }
-    tx.update(listingRef, { status: LISTING_STATUS.unavailable, approvedRequestId: requestId });
+    const approvedListingStatus = {
+      [LISTING_TYPES.lend]: LISTING_STATUS.onLoan,
+      [LISTING_TYPES.sell]: LISTING_STATUS.sold,
+      [LISTING_TYPES.give]: LISTING_STATUS.givenAway,
+    }[listing.type];
+    if (!approvedListingStatus || request.listingType !== listing.type) {
+      throw new Error('The request type does not match this listing.');
+    }
+    tx.update(listingRef, { status: approvedListingStatus, approvedRequestId: requestId });
     return REQUEST_STATUS.approved;
   });
 }
@@ -90,7 +98,8 @@ export async function reconcilePendingRequests(listingId, ownerId) {
   const listingSnap = await runTransaction(db, tx => tx.get(listingRef));
   if (!listingSnap.exists()) return 0;
   const listing = listingSnap.data();
-  if (listing.ownerId !== ownerId || listing.status !== LISTING_STATUS.unavailable || !listing.approvedRequestId) {
+  const approvedListingStatuses = [LISTING_STATUS.onLoan, LISTING_STATUS.sold, LISTING_STATUS.givenAway, LISTING_STATUS.unavailable];
+  if (listing.ownerId !== ownerId || !approvedListingStatuses.includes(listing.status) || !listing.approvedRequestId) {
     return 0;
   }
   const pending = await getDocs(query(collection(db, COLLECTIONS.requests),
@@ -105,7 +114,7 @@ export async function reconcilePendingRequests(listingId, ownerId) {
       if (!currentListing.exists() || !currentRequest.exists()) return false;
       const item = currentListing.data();
       const request = currentRequest.data();
-      if (item.ownerId !== ownerId || item.status !== LISTING_STATUS.unavailable ||
+      if (item.ownerId !== ownerId || !approvedListingStatuses.includes(item.status) ||
           !item.approvedRequestId || candidate.id === item.approvedRequestId ||
           request.ownerId !== ownerId || request.listingId !== listingId ||
           request.status !== REQUEST_STATUS.pending) return false;
