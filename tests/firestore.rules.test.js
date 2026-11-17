@@ -64,6 +64,13 @@ test('verified UW requester can create their own pending request', async () => {
   await assertSucceeds(batch.commit());
 });
 
+test('a requester cannot increment the listing request version without a matching Pending request', async () => {
+  const requester = uwContext('requester-1');
+  await assertFails(updateDoc(doc(requester, 'listings/item-1'), {
+    requestVersion: 1,
+  }));
+});
+
 test('unverified or non-UW users cannot create requests', async () => {
   const unverified = testEnv.authenticatedContext('bad-user', {
     email: 'bad-user@uw.edu',
