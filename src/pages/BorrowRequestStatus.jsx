@@ -82,7 +82,7 @@ export default function BorrowRequestStatus() {
               {request.pickupDate && <p><strong>Pickup date:</strong> {request.pickupDate}</p>}
               {request.pickupTime && <p><strong>Pickup time:</strong> {request.pickupTime}</p>}
               {request.pickupLocation && <p><strong>Pickup location:</strong> {request.pickupLocation}</p>}
-              <p><Link to="/manage">Go to Manage to follow your borrowing progress</Link></p>
+              <p><Link to={`/transactions/borrower/${request.id}`}>View Ongoing Borrowing</Link></p>
             </>
           )}
           {status === REQUEST_STATUS.declined && <p>The item owner declined your request.</p>}
