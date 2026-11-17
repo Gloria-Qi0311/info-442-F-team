@@ -356,3 +356,35 @@ test('unrelated users cannot create transaction confirmation photos', async () =
     photoUrl: 'https://example.com/photo.jpg', createdAt: new Date(),
   }));
 });
+
+test('completed transaction awards points once and allows only participant ratings', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Received',
+    });
+    await setDoc(doc(context.firestore(), 'users/owner-1'), { totalPoints: 0 });
+    await setDoc(doc(context.firestore(), 'users/requester-1'), { totalPoints: 0 });
+  });
+  const owner = uwContext('owner-1');
+  const requester = uwContext('requester-1');
+  const points = writeBatch(owner);
+  points.update(doc(owner, 'users/owner-1'), { totalPoints: 10 });
+  points.set(doc(owner, 'pointsRecords/item-1_requester-1_owner-1'), {
+    requestId: 'item-1_requester-1', userId: 'owner-1', points: 10,
+    reason: 'Completed borrowing transaction', createdAt: new Date(),
+  });
+  await assertSucceeds(points.commit());
+  await assertFails(setDoc(doc(owner, 'pointsRecords/item-1_requester-1_owner-1'), {
+    requestId: 'item-1_requester-1', userId: 'owner-1', points: 10,
+    reason: 'Completed borrowing transaction', createdAt: new Date(),
+  }));
+  await assertSucceeds(setDoc(doc(requester, 'ratings/item-1_requester-1_requester-1'), {
+    requestId: 'item-1_requester-1', raterId: 'requester-1', rateeId: 'owner-1',
+    stars: 5, tags: ['Polite'], createdAt: new Date(),
+  }));
+  await assertFails(setDoc(doc(uwContext('outsider'), 'ratings/item-1_requester-1_outsider'), {
+    requestId: 'item-1_requester-1', raterId: 'outsider', rateeId: 'owner-1',
+    stars: 5, tags: [], createdAt: new Date(),
+  }));
+});
