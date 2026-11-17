@@ -105,9 +105,7 @@ function RequestPanel({ listing, available }) {
     }
   }
 
-  if (listing.type !== LISTING_TYPES.sell && listing.type !== LISTING_TYPES.give) {
-    return null;
-  }
+
 
   if (isOwner) {
     return (
@@ -116,6 +114,24 @@ function RequestPanel({ listing, available }) {
         <Link className="item-request-link" to={`/manage/${listing.type}/${listing.id}/requests`}>
           View requests for this item
         </Link>
+      </section>
+    );
+  }
+
+  if (listing.type === LISTING_TYPES.lend) {
+    if (isOwner) {
+      return <section className="item-request"><p>This is your listing.</p><Link to={`/manage/lend/${listing.id}/requests`}>View requests for this item</Link></section>;
+    }
+    if (loading) return <p role="status">Loading your request...</p>;
+    const hasRequest = Boolean(request);
+    return (
+      <section className="item-request">
+        {hasRequest && <p>Your request: {request.status}</p>}
+        {hasRequest && <Link to={`/listings/${listing.id}/borrow/status`}>View my borrowing request</Link>}
+        {available && (!hasRequest || request.status === REQUEST_STATUS.cancelled) && (
+          <Link className="item-request-link" to={`/listings/${listing.id}/borrow`}>Send request!</Link>
+        )}
+        {error && <p role="alert" className="error">{error}</p>}
       </section>
     );
   }
@@ -144,7 +160,12 @@ function RequestPanel({ listing, available }) {
         </>
       )}
       {status === REQUEST_STATUS.approved && (
-        <p>Your request was approved. Check Manage for the pickup details.</p>
+        <div>
+          <p>Your request was approved!</p>
+          {request.pickupDate && <p>Pickup date: {request.pickupDate}</p>}
+          {request.pickupTime && <p>Pickup time: {request.pickupTime}</p>}
+          {request.pickupLocation && <p>Pickup location: {request.pickupLocation}</p>}
+        </div>
       )}
       {status === REQUEST_STATUS.declined && (
         <p>The owner declined your request for this item.</p>

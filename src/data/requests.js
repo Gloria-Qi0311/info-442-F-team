@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  deleteField,
   getDoc,
   getDocs,
   onSnapshot,
@@ -67,6 +68,13 @@ export async function sendItemRequest(listingId, requester) {
       // A canceled request can be sent again below.
     }
 
+    // Increment a listing-level version in the same transaction as the request.
+    // Approval uses this value to detect requests created while it is preparing
+    // the list of pending requests.
+    transaction.update(listingRef, {
+      requestVersion: (Number(listing.requestVersion) || 0) + 1,
+    });
+
     const request = {
       listingId,
       listingType: listing.type,
@@ -79,7 +87,11 @@ export async function sendItemRequest(listingId, requester) {
       viewedByOwner: false,
       createdAt: serverTimestamp(),
     };
-    transaction.set(requestRef, request);
+    if (existingSnap.exists()) {
+      transaction.update(requestRef, { ...request, cancelledAt: deleteField() });
+    } else {
+      transaction.set(requestRef, request);
+    }
     return { id: requestRef.id, ...request };
   });
 }
@@ -118,6 +130,19 @@ export async function getRequestsForListing(listingId, ownerId) {
   const requests = snap.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
   requests.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
   return requests;
+}
+
+// Live owner request list: cancellation and approval appear without a refresh.
+export function watchRequestsForListing(listingId, ownerId, onChange, onError) {
+  return onSnapshot(query(
+    collection(db, COLLECTIONS.requests),
+    where('ownerId', '==', ownerId),
+    where('listingId', '==', listingId),
+  ), snapshot => {
+    const requests = snapshot.docs.map(entry => ({ id: entry.id, ...entry.data() }));
+    requests.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
+    onChange(requests);
+  }, onError);
 }
 
 // Marks the owner's unviewed requests as viewed once they open the request list,
