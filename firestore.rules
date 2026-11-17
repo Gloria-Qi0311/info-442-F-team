@@ -43,7 +43,9 @@ service cloud.firestore {
                     'availableUntil', 'timeSlot', 'ownerName']);
       allow update: if isUwUser() && resource.data.ownerId == request.auth.uid
         && resource.data.status == 'Active'
-        && request.resource.data.status == 'Unavailable'
+        && request.resource.data.status == (resource.data.type == 'lend' ? 'On Loan'
+          : resource.data.type == 'sell' ? 'Sold'
+          : resource.data.type == 'give' ? 'Given Away' : 'Invalid')
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['status', 'approvedRequestId'])
         && request.resource.data.approvedRequestId is string
