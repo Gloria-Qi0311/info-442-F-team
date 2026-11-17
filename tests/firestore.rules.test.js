@@ -133,3 +133,133 @@ test('only the listing owner can atomically approve and mark the listing unavail
   });
   await assertSucceeds(batch.commit());
 });
+
+
+test('a requester can cancel their own pending request, but cannot cancel an approved request', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/item-1_requester-1'), {
+      listingId: 'item-1',
+      listingType: 'lend',
+      ownerId: 'owner-1',
+      requesterId: 'requester-1',
+      status: 'Pending',
+    });
+    await setDoc(doc(db, 'requests/item-1_requester-2'), {
+      listingId: 'item-1',
+      listingType: 'lend',
+      ownerId: 'owner-1',
+      requesterId: 'requester-2',
+      status: 'Approved',
+    });
+  });
+
+  const requester = uwContext('requester-1');
+  await assertSucceeds(updateDoc(doc(requester, 'requests/item-1_requester-1'), {
+    status: 'Canceled',
+    cancelledAt: new Date(),
+  }));
+
+  const approvedRequester = uwContext('requester-2');
+  await assertFails(updateDoc(doc(approvedRequester, 'requests/item-1_requester-2'), {
+    status: 'Canceled',
+    cancelledAt: new Date(),
+  }));
+});
+
+test('only the listing owner can decline a pending request', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
+      listingId: 'item-1',
+      listingType: 'lend',
+      ownerId: 'owner-1',
+      requesterId: 'requester-1',
+      status: 'Pending',
+    });
+  });
+
+  const requester = uwContext('requester-1');
+  await assertFails(updateDoc(doc(requester, 'requests/item-1_requester-1'), {
+    status: 'Declined',
+    decidedAt: new Date(),
+  }));
+
+  const owner = uwContext('owner-1');
+  await assertSucceeds(updateDoc(doc(owner, 'requests/item-1_requester-1'), {
+    status: 'Declined',
+    decidedAt: new Date(),
+  }));
+});
+
+test('requesters cannot request their own listing or a listing that is no longer active', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'listings/item-2'), {
+      ...listing,
+      status: 'Unavailable',
+    });
+  });
+
+  const owner = uwContext('owner-1');
+  await assertFails(setDoc(doc(owner, 'requests/item-1_owner-1'), {
+    listingId: 'item-1',
+    listingType: 'lend',
+    ownerId: 'owner-1',
+    requesterId: 'owner-1',
+    status: 'Pending',
+  }));
+
+  const requester = uwContext('requester-1');
+  await assertFails(setDoc(doc(requester, 'requests/item-2_requester-1'), {
+    listingId: 'item-2',
+    listingType: 'lend',
+    ownerId: 'owner-1',
+    requesterId: 'requester-1',
+    status: 'Pending',
+  }));
+});
+
+test('approving one request declines every other pending request in the same atomic update', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/item-1_requester-1'), {
+      listingId: 'item-1',
+      listingType: 'lend',
+      ownerId: 'owner-1',
+      requesterId: 'requester-1',
+      status: 'Pending',
+    });
+    await setDoc(doc(db, 'requests/item-1_requester-2'), {
+      listingId: 'item-1',
+      listingType: 'lend',
+      ownerId: 'owner-1',
+      requesterId: 'requester-2',
+      status: 'Pending',
+    });
+  });
+
+  const owner = uwContext('owner-1');
+  const batch = writeBatch(owner);
+  batch.update(doc(owner, 'requests/item-1_requester-1'), {
+    status: 'Approved',
+    pickupDate: '2026-11-20',
+    pickupTime: '15:00',
+    pickupLocation: 'Suzzallo Library',
+  });
+  batch.update(doc(owner, 'requests/item-1_requester-2'), {
+    status: 'Declined',
+    decidedAt: new Date(),
+  });
+  batch.update(doc(owner, 'listings/item-1'), {
+    status: 'Unavailable',
+    approvedRequestId: 'item-1_requester-1',
+  });
+  await assertSucceeds(batch.commit());
+
+  const requesterOne = uwContext('requester-1');
+  const requesterTwo = uwContext('requester-2');
+  const approved = await getDoc(doc(requesterOne, 'requests/item-1_requester-1'));
+  const declined = await getDoc(doc(requesterTwo, 'requests/item-1_requester-2'));
+  if (approved.data().status !== 'Approved' || declined.data().status !== 'Declined') {
+    throw new Error('Request statuses did not match the approval decision.');
+  }
+});
