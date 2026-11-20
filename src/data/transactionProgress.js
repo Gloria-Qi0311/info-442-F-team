@@ -56,25 +56,65 @@ export async function confirmExchange(requestId, uid, kind, photo) {
   const myRef = doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, kind, uid));
   const otherId = current.ownerId === uid ? current.requesterId : current.ownerId;
   const otherRef = doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, kind, otherId));
+  const listingRef = doc(db, COLLECTIONS.listings, current.listingId);
   try {
     await runTransaction(db, async tx => {
-    const [requestSnap, mine, theirs] = await Promise.all([tx.get(requestRef), tx.get(myRef), tx.get(otherRef)]);
-    if (!requestSnap.exists()) throw new Error('Request not found.');
-    const request = requestSnap.data();
-    if (!isParticipant(request, uid) || request.status !== REQUEST_STATUS.approved) throw new Error('Not allowed.');
-    if ((request.stage || TRANSACTION_STAGE.approved) !== expectedStage) {
-      throw new Error('This transaction has already moved to another stage.');
-    }
-    if (mine.exists()) throw new Error('You have already confirmed this exchange.');
-    tx.set(myRef, { requestId, userId: uid, kind, photoUrl, createdAt: serverTimestamp() });
-    if (kind === PHOTO_KINDS.pickup && theirs.exists()) {
-      tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
-    }
-    if (kind === PHOTO_KINDS.return) {
-      tx.update(requestRef, {
-        stage: uid === request.requesterId ? TRANSACTION_STAGE.return : TRANSACTION_STAGE.received,
-      });
-    }
+      const isReceivingReturn = kind === PHOTO_KINDS.return && uid === current.ownerId;
+      const reads = [tx.get(requestRef), tx.get(myRef), tx.get(otherRef)];
+      if (isReceivingReturn) {
+        reads.push(
+          tx.get(listingRef),
+          tx.get(doc(db, COLLECTIONS.users, current.ownerId)),
+          tx.get(doc(db, COLLECTIONS.users, current.requesterId)),
+        );
+      }
+      const [requestSnap, mine, theirs, listingSnap, ownerUserSnap, borrowerUserSnap] = await Promise.all(reads);
+      if (!requestSnap.exists()) throw new Error('Request not found.');
+      const request = requestSnap.data();
+      if (!isParticipant(request, uid) || request.status !== REQUEST_STATUS.approved) throw new Error('Not allowed.');
+      if ((request.stage || TRANSACTION_STAGE.approved) !== expectedStage) {
+        throw new Error('This transaction has already moved to another stage.');
+      }
+      if (mine.exists()) throw new Error('You have already confirmed this exchange.');
+      if (isReceivingReturn &&
+          (!listingSnap?.exists() || listingSnap.data().ownerId !== uid ||
+           listingSnap.data().status !== 'On Loan' || listingSnap.data().approvedRequestId !== requestId)) {
+        throw new Error('The listing is not ready to become available again.');
+      }
+      if (isReceivingReturn && (!ownerUserSnap?.exists() || !borrowerUserSnap?.exists())) {
+        throw new Error('Both participant profiles are required to award completion points.');
+      }
+
+      tx.set(myRef, { requestId, userId: uid, kind, photoUrl, createdAt: serverTimestamp() });
+      if (kind === PHOTO_KINDS.pickup && theirs.exists()) {
+        tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
+      }
+      if (kind === PHOTO_KINDS.return && uid === request.requesterId) {
+        tx.update(requestRef, { stage: TRANSACTION_STAGE.return });
+      }
+      if (isReceivingReturn) {
+        // LS6 + P1/P2: receiving, reactivating, and awarding both users' points
+        // are one atomic Firestore transaction. This works on the Spark plan.
+        const ownerPoints = Number(ownerUserSnap.data().totalPoints) || 0;
+        const borrowerPoints = Number(borrowerUserSnap.data().totalPoints) || 0;
+        const ownerUserRef = doc(db, COLLECTIONS.users, request.ownerId);
+        const borrowerUserRef = doc(db, COLLECTIONS.users, request.requesterId);
+        const ownerPointsRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${request.ownerId}`);
+        const borrowerPointsRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${request.requesterId}`);
+
+        tx.update(requestRef, { stage: TRANSACTION_STAGE.received });
+        tx.update(listingRef, { status: 'Active', approvedRequestId: null });
+        tx.update(ownerUserRef, { totalPoints: ownerPoints + 10, lastPointsRequestId: requestId });
+        tx.update(borrowerUserRef, { totalPoints: borrowerPoints + 5, lastPointsRequestId: requestId });
+        tx.set(ownerPointsRef, {
+          requestId, userId: request.ownerId, points: 10,
+          reason: 'Completed borrowing transaction', createdAt: serverTimestamp(),
+        });
+        tx.set(borrowerPointsRef, {
+          requestId, userId: request.requesterId, points: 5,
+          reason: 'Completed borrowing transaction', createdAt: serverTimestamp(),
+        });
+      }
     });
   } catch (cause) {
     // A failed Firestore confirmation must not leave an unused upload behind.

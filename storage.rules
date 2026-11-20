@@ -28,7 +28,9 @@ service firebase.storage {
         && kind in ['pickup', 'return']
         && request.resource.contentType.matches('image/.*')
         && request.resource.size < 10 * 1024 * 1024;
-      allow update, delete: if false;
+      // The uploader may remove a failed confirmation upload during rollback.
+      allow delete: if isUwUser() && request.auth.uid == uid;
+      allow update: if false;
     }
 
     match /{allPaths=**} {

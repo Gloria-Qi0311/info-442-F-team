@@ -5,7 +5,6 @@ import { useAuth } from '../auth/AuthContext';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from '../data/schema';
 import { confirmExchange, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
-import { awardCompletionPoints } from '../data/completion';
 import './ItemDetails.css';
 
 export default function OngoingBorrowing() {
@@ -19,6 +18,7 @@ export default function OngoingBorrowing() {
   const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState('');
   const [myPickupConfirmed, setMyPickupConfirmed] = useState(false);
+  const [myReturnConfirmed, setMyReturnConfirmed] = useState(false);
   const isOwner = role === 'lender';
   const validRole = role === 'lender' || role === 'borrower';
   const validAction = !action || action === 'pickup' || action === 'return';
@@ -41,17 +41,12 @@ export default function OngoingBorrowing() {
     }, () => setMyPickupConfirmed(false));
   }, [requestId, user]);
 
-  // Award points when an active participant sees the completed transaction,
-  // without requiring them to open the separate rating page. The award
-  // transaction is idempotent and cannot add points twice.
   useEffect(() => {
-    if (!user || !request || request.stage !== TRANSACTION_STAGE.received
-      || request.status !== REQUEST_STATUS.approved || request.listingType !== LISTING_TYPES.lend
-      || !isParticipant(request, user.uid)) return;
-    awardCompletionPoints(requestId, user.uid).catch(cause => {
-      console.error('Could not award completion points:', cause);
-    });
-  }, [requestId, request, user]);
+    if (!user || !requestId) return undefined;
+    return onSnapshot(doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, PHOTO_KINDS.return, user.uid)), snap => {
+      setMyReturnConfirmed(snap.exists());
+    }, () => setMyReturnConfirmed(false));
+  }, [requestId, user]);
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
@@ -72,7 +67,10 @@ export default function OngoingBorrowing() {
       await confirmExchange(requestId, user.uid, action, photo);
       navigate(action === 'return' && isOwner ? `${base}/complete` : base, { replace: true });
     } catch (cause) {
-      setError(cause.message || 'Could not confirm. Please try again.');
+      const step = action === PHOTO_KINDS.pickup ? 'Pickup' : 'Return';
+      setError(cause.message === 'Please upload a photo.'
+        ? cause.message
+        : `${step} could not be confirmed. ${cause.message || 'Please try again.'}`);
     } finally {
       setBusy(false);
     }
@@ -102,8 +100,11 @@ export default function OngoingBorrowing() {
             ))}
           </ol>
           {action ? (
-            action === PHOTO_KINDS.pickup && myPickupConfirmed ? (
-              <p>Your pickup is confirmed. Waiting for the other person to confirm.</p>
+            ((action === PHOTO_KINDS.pickup && myPickupConfirmed) ||
+              (action === PHOTO_KINDS.return && myReturnConfirmed)) ? (
+              <p>{action === PHOTO_KINDS.pickup
+                ? 'Your pickup is confirmed. Waiting for the other person to confirm.'
+                : 'Your return is confirmed.'}</p>
             ) : stage === expected ? (
               <section className="item-request">
                 <label htmlFor="confirmation-photo">Photo of the item</label>

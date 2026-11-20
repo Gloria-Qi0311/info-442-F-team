@@ -56,28 +56,3 @@ export async function submitRating(requestId, uid, stars, tags) {
   });
 }
 
-export async function awardCompletionPoints(requestId, uid) {
-  const recordRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${uid}`);
-  const userRef = doc(db, COLLECTIONS.users, uid);
-  const requestRef = doc(db, COLLECTIONS.requests, requestId);
-  return runTransaction(db, async tx => {
-    const [requestSnap, recordSnap, userSnap] = await Promise.all([
-      tx.get(requestRef), tx.get(recordRef), tx.get(userRef),
-    ]);
-    if (!requestSnap.exists()) throw new Error('Transaction not found.');
-    const request = requestSnap.data();
-    if (request.listingType !== LISTING_TYPES.lend || request.status !== REQUEST_STATUS.approved
-      || request.stage !== TRANSACTION_STAGE.received || ![request.ownerId, request.requesterId].includes(uid)) {
-      throw new Error('Points are only awarded for a completed borrowing transaction.');
-    }
-    const previous = userSnap.exists() ? Number(userSnap.data().totalPoints) || 0 : 0;
-    if (recordSnap.exists()) return previous;
-    const points = request.ownerId === uid ? 10 : 5;
-    tx.set(userRef, { totalPoints: previous + points, lastPointsRequestId: requestId }, { merge: true });
-    tx.set(recordRef, {
-      requestId, userId: uid, points,
-      reason: 'Completed borrowing transaction', createdAt: serverTimestamp(),
-    });
-    return previous + points;
-  });
-}
