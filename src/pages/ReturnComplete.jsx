@@ -39,7 +39,7 @@ export default function ReturnComplete() {
   }, [requestId, user, isLender]);
 
   useEffect(() => {
-    if (!user || !completion) return undefined;
+    if (!user || !requestId) return undefined;
     const unsubscribeRecord = onSnapshot(
       doc(db, COLLECTIONS.pointsRecords, `${requestId}_${user.uid}`),
       snap => setPointsRecorded(snap.exists()),
@@ -52,7 +52,7 @@ export default function ReturnComplete() {
         : previous),
     );
     return () => { unsubscribeRecord(); unsubscribeUser(); };
-  }, [requestId, user, Boolean(completion)]);
+  }, [requestId, user]);
 
   async function submit(event) {
     event.preventDefault();
