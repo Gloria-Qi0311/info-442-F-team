@@ -20,6 +20,17 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // L7/P1/P2: lender may award both participants in the same Return -> Received write.
+    function receivingLoanFor(userId, requestId) {
+      return request.auth.uid != null
+        && !exists(/databases/$(database)/documents/pointsRecords/$(requestId + '_' + userId))
+        && get(/databases/$(database)/documents/requests/$(requestId)).data.stage == 'Return'
+        && getAfter(/databases/$(database)/documents/requests/$(requestId)).data.stage == 'Received'
+        && get(/databases/$(database)/documents/requests/$(requestId)).data.ownerId == request.auth.uid
+        && userId in [get(/databases/$(database)/documents/requests/$(requestId)).data.ownerId,
+                       get(/databases/$(database)/documents/requests/$(requestId)).data.requesterId];
+    }
+
     match /users/{uid} {
       function pointsAwarded(previous) {
         return 'lastPointsRequestId' in request.resource.data
@@ -34,11 +45,20 @@ service cloud.firestore {
         && (!('totalPoints' in request.resource.data)
           || request.resource.data.totalPoints == 0
           || pointsAwarded(0));
-      allow update: if isUwUser() && request.auth.uid == uid
+      allow update: if isUwUser() && (request.auth.uid == uid
         && ((!('totalPoints' in resource.data) && !('totalPoints' in request.resource.data))
           || ('totalPoints' in resource.data && 'totalPoints' in request.resource.data
             && request.resource.data.totalPoints == resource.data.totalPoints)
-          || pointsAwarded(('totalPoints' in resource.data) ? resource.data.totalPoints : 0));
+          || pointsAwarded(('totalPoints' in resource.data) ? resource.data.totalPoints : 0)))
+        || (isUwUser()
+          && 'lastPointsRequestId' in request.resource.data
+          && request.resource.data.lastPointsRequestId is string
+          && receivingLoanFor(uid, request.resource.data.lastPointsRequestId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalPoints', 'lastPointsRequestId'])
+          && request.resource.data.totalPoints == (('totalPoints' in resource.data) ? resource.data.totalPoints : 0)
+             + (uid == request.auth.uid ? 10 : 5)
+          && getAfter(/databases/$(database)/documents/pointsRecords/$(request.resource.data.lastPointsRequestId + '_' + uid)).data.points
+             == (uid == request.auth.uid ? 10 : 5));
       allow delete: if false;
     }
 
@@ -282,22 +302,26 @@ service cloud.firestore {
       allow read: if isUwUser() && resource.data.userId == request.auth.uid;
       allow create: if isUwUser()
         && request.resource.data.keys().hasOnly(['requestId', 'userId', 'points', 'reason', 'createdAt'])
-        && request.resource.data.userId == request.auth.uid
+        && (request.resource.data.userId == request.auth.uid
+          || receivingLoanFor(request.resource.data.userId, request.resource.data.requestId))
         && id == request.resource.data.requestId + '_' + request.auth.uid
         && request.resource.data.reason == 'Completed borrowing transaction'
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+        && (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+          || receivingLoanFor(request.resource.data.userId, request.resource.data.requestId))
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
         && (
-          (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
+          (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.resource.data.userId
+            && request.resource.data.userId == get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId
             && request.resource.data.points == 10)
-          || (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId == request.auth.uid
+          || (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId == request.resource.data.userId
+            && request.resource.data.userId == get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId
             && request.resource.data.points == 5)
         )
-        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.totalPoints
-          == (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            && 'totalPoints' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
-            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.totalPoints : 0)
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints
+          == (exists(/databases/$(database)/documents/users/$(request.resource.data.userId))
+            && 'totalPoints' in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data
+            ? get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints : 0)
             + request.resource.data.points;
       allow update, delete: if false;
     }
