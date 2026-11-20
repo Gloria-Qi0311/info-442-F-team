@@ -21,24 +21,38 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      function pointsAwarded(previous) {
-        return 'lastPointsRequestId' in request.resource.data
-          && request.resource.data.lastPointsRequestId is string
-          && !exists(/databases/$(database)/documents/pointsRecords/$(request.resource.data.lastPointsRequestId + '_' + uid))
-          && getAfter(/databases/$(database)/documents/pointsRecords/$(request.resource.data.lastPointsRequestId + '_' + uid)).data.userId == uid
-          && request.resource.data.totalPoints == previous
-            + getAfter(/databases/$(database)/documents/pointsRecords/$(request.resource.data.lastPointsRequestId + '_' + uid)).data.points;
+      function completionPointsAward(previous) {
+        let requestId = request.resource.data.lastPointsRequestId;
+        let beforeRequest = get(/databases/$(database)/documents/requests/$(requestId));
+        let afterRequest = getAfter(/databases/$(database)/documents/requests/$(requestId));
+        let recordPath = /databases/$(database)/documents/pointsRecords/$(requestId + '_' + uid);
+        let expectedPoints = uid == beforeRequest.data.ownerId ? 10 : 5;
+        return requestId is string
+          && beforeRequest.data.listingType == 'lend'
+          && beforeRequest.data.status == 'Approved'
+          && beforeRequest.data.stage == 'Return'
+          && afterRequest.data.stage == 'Received'
+          && beforeRequest.data.ownerId == request.auth.uid
+          && uid in [beforeRequest.data.ownerId, beforeRequest.data.requesterId]
+          && !exists(recordPath)
+          && existsAfter(recordPath)
+          && getAfter(recordPath).data.userId == uid
+          && getAfter(recordPath).data.points == expectedPoints
+          && request.resource.data.totalPoints == previous + expectedPoints;
       }
       allow read: if isUwUser();
       allow create: if isUwUser() && request.auth.uid == uid
-        && (!('totalPoints' in request.resource.data)
-          || request.resource.data.totalPoints == 0
-          || pointsAwarded(0));
-      allow update: if isUwUser() && request.auth.uid == uid
-        && ((!('totalPoints' in resource.data) && !('totalPoints' in request.resource.data))
-          || ('totalPoints' in resource.data && 'totalPoints' in request.resource.data
-            && request.resource.data.totalPoints == resource.data.totalPoints)
-          || pointsAwarded(('totalPoints' in resource.data) ? resource.data.totalPoints : 0));
+        && (!('totalPoints' in request.resource.data) || request.resource.data.totalPoints == 0);
+      allow update: if isUwUser()
+        && (
+          (request.auth.uid == uid
+            && ((!('totalPoints' in resource.data) && !('totalPoints' in request.resource.data))
+              || ('totalPoints' in resource.data && 'totalPoints' in request.resource.data
+                && request.resource.data.totalPoints == resource.data.totalPoints)))
+          || completionPointsAward(
+              ('totalPoints' in resource.data) ? resource.data.totalPoints : 0
+            )
+        );
       allow delete: if false;
     }
 
@@ -222,7 +236,9 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'On Loan'
               && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == id
               && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
-              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == null)
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == null
+              && existsAfter(/databases/$(database)/documents/pointsRecords/$(id + '_' + resource.data.ownerId))
+              && existsAfter(/databases/$(database)/documents/pointsRecords/$(id + '_' + resource.data.requesterId)))
           ))
       );
 
@@ -282,22 +298,26 @@ service cloud.firestore {
       allow read: if isUwUser() && resource.data.userId == request.auth.uid;
       allow create: if isUwUser()
         && request.resource.data.keys().hasOnly(['requestId', 'userId', 'points', 'reason', 'createdAt'])
-        && request.resource.data.userId == request.auth.uid
-        && id == request.resource.data.requestId + '_' + request.auth.uid
+        && id == request.resource.data.requestId + '_' + request.resource.data.userId
         && request.resource.data.reason == 'Completed borrowing transaction'
-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+        && !exists(/databases/$(database)/documents/pointsRecords/$(id))
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
-        && (
-          (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
-            && request.resource.data.points == 10)
-          || (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId == request.auth.uid
-            && request.resource.data.points == 5)
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Return'
+        && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
+        && request.resource.data.userId in [
+          get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId,
+          get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId
+        ]
+        && request.resource.data.points == (
+          request.resource.data.userId
+            == get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId
+          ? 10 : 5
         )
-        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.totalPoints
-          == (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            && 'totalPoints' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data
-            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.totalPoints : 0)
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints
+          == (('totalPoints' in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data)
+            ? get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints : 0)
             + request.resource.data.points;
       allow update, delete: if false;
     }
