@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { awardCompletionPoints, FEEDBACK_TAGS, getCompletion, submitRating } from '../data/completion';
+import { FEEDBACK_TAGS, getCompletion, submitRating } from '../data/completion';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+import { COLLECTIONS } from '../data/schema';
 import './ItemDetails.css';
 
 export default function ReturnComplete() {
@@ -14,6 +17,7 @@ export default function ReturnComplete() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [pointsRecorded, setPointsRecorded] = useState(false);
   const isLender = role === 'lender';
 
   useEffect(() => {
@@ -23,8 +27,7 @@ export default function ReturnComplete() {
       try {
         const result = await getCompletion(requestId, user.uid);
         if (isLender !== (result.request.ownerId === user.uid)) throw new Error('Wrong transaction role.');
-        const totalPoints = await awardCompletionPoints(requestId, user.uid);
-        if (active) setCompletion({ ...result, totalPoints });
+        if (active) setCompletion(result);
       } catch (cause) {
         if (active) setError(cause.message || 'Could not load completion.');
       } finally {
@@ -34,6 +37,22 @@ export default function ReturnComplete() {
     load();
     return () => { active = false; };
   }, [requestId, user, isLender]);
+
+  useEffect(() => {
+    if (!user || !completion) return undefined;
+    const unsubscribeRecord = onSnapshot(
+      doc(db, COLLECTIONS.pointsRecords, `${requestId}_${user.uid}`),
+      snap => setPointsRecorded(snap.exists()),
+      () => setPointsRecorded(false),
+    );
+    const unsubscribeUser = onSnapshot(
+      doc(db, COLLECTIONS.users, user.uid),
+      snap => setCompletion(previous => previous
+        ? { ...previous, totalPoints: Number(snap.data()?.totalPoints) || 0 }
+        : previous),
+    );
+    return () => { unsubscribeRecord(); unsubscribeUser(); };
+  }, [requestId, user, Boolean(completion)]);
 
   async function submit(event) {
     event.preventDefault();
@@ -58,7 +77,7 @@ export default function ReturnComplete() {
       {loading ? <p role="status">Loading...</p> : completion ? (
         <>
           <h2>{completion.request.listingTitle || 'Item returned'}</h2>
-          <p><strong>Points earned:</strong> +{isLender ? 10 : 5} points</p>
+          <p><strong>Points earned:</strong> {pointsRecorded ? `+${isLender ? 10 : 5} points` : 'Processing completion points...'}</p>
           <p><strong>Your total points:</strong> {completion.totalPoints}</p>
           {completion.rated ? (
             <p role="status">{success ? 'Rating submitted successfully!' : 'You have already rated this transaction.'}</p>
