@@ -309,10 +309,13 @@ test('purchase and giveaway approvals set their required listing statuses', asyn
 test('lending pickup needs both photos and return advances in the correct order', async () => {
   const requestId = 'item-1_requester-1';
   await testEnv.withSecurityRulesDisabled(async context => {
-    await setDoc(doc(context.firestore(), 'requests/' + requestId), {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/' + requestId), {
       listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
       requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
     });
+    await setDoc(doc(db, 'users/owner-1'), { totalPoints: 0 });
+    await setDoc(doc(db, 'users/requester-1'), { totalPoints: 0 });
   });
   const borrower = uwContext('requester-1');
   const owner = uwContext('owner-1');
@@ -348,13 +351,37 @@ test('lending pickup needs both photos and return advances in the correct order'
   receivingWithoutListing.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
   await assertFails(receivingWithoutListing.commit());
 
+  const receivingWithoutPoints = writeBatch(owner);
+  receivingWithoutPoints.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), photo('owner-1', 'return'));
+  receivingWithoutPoints.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
+  receivingWithoutPoints.update(doc(owner, 'listings/item-1'), { status: 'Active', approvedRequestId: null });
+  await assertFails(receivingWithoutPoints.commit());
+
   const receiving = writeBatch(owner);
   receiving.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), photo('owner-1', 'return'));
   receiving.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
   receiving.update(doc(owner, 'listings/item-1'), { status: 'Active', approvedRequestId: null });
+  receiving.update(doc(owner, 'users/owner-1'), { totalPoints: 10, lastPointsRequestId: requestId });
+  receiving.update(doc(owner, 'users/requester-1'), { totalPoints: 5, lastPointsRequestId: requestId });
+  receiving.set(doc(owner, 'pointsRecords/' + requestId + '_owner-1'), {
+    requestId, userId: 'owner-1', points: 10,
+    reason: 'Completed borrowing transaction', createdAt: new Date(),
+  });
+  receiving.set(doc(owner, 'pointsRecords/' + requestId + '_requester-1'), {
+    requestId, userId: 'requester-1', points: 5,
+    reason: 'Completed borrowing transaction', createdAt: new Date(),
+  });
   await assertSucceeds(receiving.commit());
-  const reopened = await getDoc(doc(owner, 'listings/item-1'));
+
+  const [reopened, ownerUser, borrowerUser] = await Promise.all([
+    getDoc(doc(owner, 'listings/item-1')),
+    getDoc(doc(owner, 'users/owner-1')),
+    getDoc(doc(owner, 'users/requester-1')),
+  ]);
   if (reopened.data().status !== 'Active') throw new Error('Returned listing was not reactivated.');
+  if (ownerUser.data().totalPoints !== 10 || borrowerUser.data().totalPoints !== 5) {
+    throw new Error('Completion points were not awarded atomically.');
+  }
 });
 
 test('unrelated users cannot create transaction confirmation photos', async () => {
@@ -371,34 +398,35 @@ test('unrelated users cannot create transaction confirmation photos', async () =
   }));
 });
 
-test('completed transaction awards points once and allows only participant ratings', async () => {
+test('completion points cannot be awarded later or duplicated after Received', async () => {
+  const requestId = 'item-1_requester-1';
   await testEnv.withSecurityRulesDisabled(async context => {
-    await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/' + requestId), {
       listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
       requesterId: 'requester-1', status: 'Approved', stage: 'Received',
     });
-    await setDoc(doc(context.firestore(), 'users/owner-1'), { totalPoints: 0 });
-    await setDoc(doc(context.firestore(), 'users/requester-1'), { totalPoints: 0 });
+    await setDoc(doc(db, 'users/owner-1'), { totalPoints: 10, lastPointsRequestId: requestId });
+    await setDoc(doc(db, 'users/requester-1'), { totalPoints: 5, lastPointsRequestId: requestId });
+    await setDoc(doc(db, 'pointsRecords/' + requestId + '_owner-1'), {
+      requestId, userId: 'owner-1', points: 10,
+      reason: 'Completed borrowing transaction', createdAt: new Date(),
+    });
   });
   const owner = uwContext('owner-1');
-  const requester = uwContext('requester-1');
-  const points = writeBatch(owner);
-  points.update(doc(owner, 'users/owner-1'), { totalPoints: 10, lastPointsRequestId: 'item-1_requester-1' });
-  points.set(doc(owner, 'pointsRecords/item-1_requester-1_owner-1'), {
-    requestId: 'item-1_requester-1', userId: 'owner-1', points: 10,
-    reason: 'Completed borrowing transaction', createdAt: new Date(),
-  });
-  await assertSucceeds(points.commit());
-  await assertFails(setDoc(doc(owner, 'pointsRecords/item-1_requester-1_owner-1'), {
-    requestId: 'item-1_requester-1', userId: 'owner-1', points: 10,
+  await assertFails(updateDoc(doc(owner, 'users/owner-1'), { totalPoints: 20 }));
+  await assertFails(setDoc(doc(owner, 'pointsRecords/' + requestId + '_requester-1'), {
+    requestId, userId: 'requester-1', points: 5,
     reason: 'Completed borrowing transaction', createdAt: new Date(),
   }));
-  await assertSucceeds(setDoc(doc(requester, 'ratings/item-1_requester-1_requester-1'), {
-    requestId: 'item-1_requester-1', raterId: 'requester-1', rateeId: 'owner-1',
+
+  const requester = uwContext('requester-1');
+  await assertSucceeds(setDoc(doc(requester, 'ratings/' + requestId + '_requester-1'), {
+    requestId, raterId: 'requester-1', rateeId: 'owner-1',
     stars: 5, tags: ['Polite'], createdAt: new Date(),
   }));
-  await assertFails(setDoc(doc(uwContext('outsider'), 'ratings/item-1_requester-1_outsider'), {
-    requestId: 'item-1_requester-1', raterId: 'outsider', rateeId: 'owner-1',
+  await assertFails(setDoc(doc(uwContext('outsider'), 'ratings/' + requestId + '_outsider'), {
+    requestId, raterId: 'outsider', rateeId: 'owner-1',
     stars: 5, tags: [], createdAt: new Date(),
   }));
 });
