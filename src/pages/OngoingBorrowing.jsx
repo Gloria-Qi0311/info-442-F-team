@@ -19,6 +19,7 @@ export default function OngoingBorrowing() {
   const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState('');
   const [myPickupConfirmed, setMyPickupConfirmed] = useState(false);
+  const [myReturnConfirmed, setMyReturnConfirmed] = useState(false);
   const isOwner = role === 'lender';
   const validRole = role === 'lender' || role === 'borrower';
   const validAction = !action || action === 'pickup' || action === 'return';
@@ -39,6 +40,13 @@ export default function OngoingBorrowing() {
     return onSnapshot(doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, PHOTO_KINDS.pickup, user.uid)), snap => {
       setMyPickupConfirmed(snap.exists());
     }, () => setMyPickupConfirmed(false));
+  }, [requestId, user]);
+
+  useEffect(() => {
+    if (!user || !requestId) return undefined;
+    return onSnapshot(doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, PHOTO_KINDS.return, user.uid)), snap => {
+      setMyReturnConfirmed(snap.exists());
+    }, () => setMyReturnConfirmed(false));
   }, [requestId, user]);
 
   // Award points when an active participant sees the completed transaction,
@@ -72,7 +80,10 @@ export default function OngoingBorrowing() {
       await confirmExchange(requestId, user.uid, action, photo);
       navigate(action === 'return' && isOwner ? `${base}/complete` : base, { replace: true });
     } catch (cause) {
-      setError(cause.message || 'Could not confirm. Please try again.');
+      const step = action === PHOTO_KINDS.pickup ? 'Pickup' : 'Return';
+      setError(cause.message === 'Please upload a photo.'
+        ? cause.message
+        : `${step} could not be confirmed. ${cause.message || 'Please try again.'}`);
     } finally {
       setBusy(false);
     }
@@ -102,8 +113,11 @@ export default function OngoingBorrowing() {
             ))}
           </ol>
           {action ? (
-            action === PHOTO_KINDS.pickup && myPickupConfirmed ? (
-              <p>Your pickup is confirmed. Waiting for the other person to confirm.</p>
+            ((action === PHOTO_KINDS.pickup && myPickupConfirmed) ||
+              (action === PHOTO_KINDS.return && myReturnConfirmed)) ? (
+              <p>{action === PHOTO_KINDS.pickup
+                ? 'Your pickup is confirmed. Waiting for the other person to confirm.'
+                : 'Your return is confirmed.'}</p>
             ) : stage === expected ? (
               <section className="item-request">
                 <label htmlFor="confirmation-photo">Photo of the item</label>
