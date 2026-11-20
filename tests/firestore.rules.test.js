@@ -337,10 +337,24 @@ test('lending pickup needs both photos and return advances in the correct order'
   returning.update(doc(borrower, 'requests/' + requestId), { stage: 'Return' });
   await assertSucceeds(returning.commit());
 
+  // L7 / LS6: receiving the return without reactivating the listing is forbidden.
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(), 'listings/item-1'), {
+      status: 'On Loan', approvedRequestId: requestId,
+    });
+  });
+  const receivingWithoutListing = writeBatch(owner);
+  receivingWithoutListing.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), photo('owner-1', 'return'));
+  receivingWithoutListing.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
+  await assertFails(receivingWithoutListing.commit());
+
   const receiving = writeBatch(owner);
   receiving.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), photo('owner-1', 'return'));
   receiving.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
+  receiving.update(doc(owner, 'listings/item-1'), { status: 'Active', approvedRequestId: null });
   await assertSucceeds(receiving.commit());
+  const reopened = await getDoc(doc(owner, 'listings/item-1'));
+  if (reopened.data().status !== 'Active') throw new Error('Returned listing was not reactivated.');
 });
 
 test('unrelated users cannot create transaction confirmation photos', async () => {
@@ -446,5 +460,23 @@ test('borrower and lender cannot rate before the return is received', async () =
   await assertFails(setDoc(doc(uwContext('requester-1'), 'ratings/item-1_requester-1_requester-1'), {
     requestId: 'item-1_requester-1', raterId: 'requester-1', rateeId: 'owner-1',
     stars: 5, tags: ['Polite'], createdAt: new Date(),
+  }));
+});
+
+
+test('lender cannot reactivate an On Loan listing before receiving the return', async () => {
+  const requestId = 'item-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await updateDoc(doc(db, 'listings/item-1'), {
+      status: 'On Loan', approvedRequestId: requestId,
+    });
+    await setDoc(doc(db, 'requests/' + requestId), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Return',
+    });
+  });
+  await assertFails(updateDoc(doc(uwContext('owner-1'), 'listings/item-1'), {
+    status: 'Active', approvedRequestId: null,
   }));
 });
