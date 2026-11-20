@@ -480,3 +480,35 @@ test('lender cannot reactivate an On Loan listing before receiving the return', 
     status: 'Active', approvedRequestId: null,
   }));
 });
+
+test('lender atomically awards both point totals on receipt; neither award can be repeated', async () => {
+  const requestId = 'item-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await updateDoc(doc(db, 'listings/item-1'), { status: 'On Loan', approvedRequestId: requestId });
+    await setDoc(doc(db, 'requests/' + requestId), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Return',
+    });
+    await setDoc(doc(db, 'users/owner-1'), { totalPoints: 20 });
+    await setDoc(doc(db, 'users/requester-1'), { totalPoints: 7 });
+  });
+  const owner = uwContext('owner-1');
+  const batch = writeBatch(owner);
+  batch.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
+  batch.update(doc(owner, 'listings/item-1'), { status: 'Active', approvedRequestId: null });
+  for (const [uid, previous, points] of [['owner-1', 20, 10], ['requester-1', 7, 5]]) {
+    batch.update(doc(owner, 'users/' + uid), { totalPoints: previous + points, lastPointsRequestId: requestId });
+    batch.set(doc(owner, 'pointsRecords/' + requestId + '_' + uid), {
+      requestId, userId: uid, points, reason: 'Completed borrowing transaction', createdAt: new Date(),
+    });
+  }
+  await assertSucceeds(batch.commit());
+  const lender = await getDoc(doc(owner, 'users/owner-1'));
+  const borrower = await getDoc(doc(uwContext('requester-1'), 'users/requester-1'));
+  if (lender.data().totalPoints !== 30 || borrower.data().totalPoints !== 12) {
+    throw new Error('Both completion point awards must be atomic.');
+  }
+  await assertFails(updateDoc(doc(owner, 'users/requester-1'), { totalPoints: 999 }));
+});
+
