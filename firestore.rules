@@ -87,6 +87,19 @@ service cloud.firestore {
           == id
         && get(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.status
           == 'Pending';
+      // LS6: returning a loan reactivates its listing in the same atomic write.
+      allow update: if isUwUser()
+        && resource.data.type == 'lend'
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.status == 'On Loan'
+        && request.resource.data.status == 'Active'
+        && request.resource.data.approvedRequestId == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedRequestId'])
+        && resource.data.approvedRequestId is string
+        && get(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.stage == 'Return'
+        && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.stage == 'Received'
+        && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.listingId == id
+        && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.ownerId == request.auth.uid;
       allow delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
       // LS9: any UW user may only flip an expired Active listing to Inactive.
       // availableUntil ends at Seattle midnight (UTC-8/-7); +8h keeps it from expiring early.
@@ -205,7 +218,11 @@ service cloud.firestore {
             || (resource.data.stage == 'Return'
               && request.resource.data.stage == 'Received'
               && request.auth.uid == resource.data.ownerId
-              && existsAfter(/databases/$(database)/documents/confirmationPhotos/$(id + '_return_' + resource.data.ownerId)))
+              && existsAfter(/databases/$(database)/documents/confirmationPhotos/$(id + '_return_' + resource.data.ownerId))
+              && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'On Loan'
+              && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == id
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == null)
           ))
       );
 
