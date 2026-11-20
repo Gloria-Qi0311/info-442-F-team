@@ -56,9 +56,13 @@ export async function confirmExchange(requestId, uid, kind, photo) {
   const myRef = doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, kind, uid));
   const otherId = current.ownerId === uid ? current.requesterId : current.ownerId;
   const otherRef = doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, kind, otherId));
+  const listingRef = doc(db, COLLECTIONS.listings, current.listingId);
   try {
     await runTransaction(db, async tx => {
-    const [requestSnap, mine, theirs] = await Promise.all([tx.get(requestRef), tx.get(myRef), tx.get(otherRef)]);
+    const [requestSnap, mine, theirs, listingSnap] = await Promise.all([
+      tx.get(requestRef), tx.get(myRef), tx.get(otherRef),
+      ...(kind === PHOTO_KINDS.return && uid === current.ownerId ? [tx.get(listingRef)] : []),
+    ]);
     if (!requestSnap.exists()) throw new Error('Request not found.');
     const request = requestSnap.data();
     if (!isParticipant(request, uid) || request.status !== REQUEST_STATUS.approved) throw new Error('Not allowed.');
@@ -66,9 +70,18 @@ export async function confirmExchange(requestId, uid, kind, photo) {
       throw new Error('This transaction has already moved to another stage.');
     }
     if (mine.exists()) throw new Error('You have already confirmed this exchange.');
+    if (kind === PHOTO_KINDS.return && uid === request.ownerId &&
+        (!listingSnap?.exists() || listingSnap.data().ownerId !== uid ||
+         listingSnap.data().status !== 'On Loan' || listingSnap.data().approvedRequestId !== requestId)) {
+      throw new Error('The listing is not ready to become available again.');
+    }
     tx.set(myRef, { requestId, userId: uid, kind, photoUrl, createdAt: serverTimestamp() });
     if (kind === PHOTO_KINDS.pickup && theirs.exists()) {
       tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
+    }
+    if (kind === PHOTO_KINDS.return && uid === request.ownerId) {
+      // LS6: the return and listing reactivation must succeed or fail together.
+      tx.update(listingRef, { status: 'Active', approvedRequestId: null });
     }
     if (kind === PHOTO_KINDS.return) {
       tx.update(requestRef, {
