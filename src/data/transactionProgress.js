@@ -57,16 +57,11 @@ export async function confirmExchange(requestId, uid, kind, photo) {
   const otherId = current.ownerId === uid ? current.requesterId : current.ownerId;
   const otherRef = doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, kind, otherId));
   const listingRef = doc(db, COLLECTIONS.listings, current.listingId);
-  const finalReturn = kind === PHOTO_KINDS.return && uid === current.ownerId;
-  const lenderUserRef = doc(db, COLLECTIONS.users, current.ownerId);
-  const borrowerUserRef = doc(db, COLLECTIONS.users, current.requesterId);
-  const lenderPointsRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${current.ownerId}`);
-  const borrowerPointsRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${current.requesterId}`);
   try {
     await runTransaction(db, async tx => {
-    const [requestSnap, mine, theirs, listingSnap, lenderUser, borrowerUser, lenderPoints, borrowerPoints] = await Promise.all([
+    const [requestSnap, mine, theirs, listingSnap] = await Promise.all([
       tx.get(requestRef), tx.get(myRef), tx.get(otherRef),
-      ...(finalReturn ? [tx.get(listingRef), tx.get(lenderUserRef), tx.get(borrowerUserRef), tx.get(lenderPointsRef), tx.get(borrowerPointsRef)] : []),
+      ...(kind === PHOTO_KINDS.return && uid === current.ownerId ? [tx.get(listingRef)] : []),
     ]);
     if (!requestSnap.exists()) throw new Error('Request not found.');
     const request = requestSnap.data();
@@ -84,18 +79,9 @@ export async function confirmExchange(requestId, uid, kind, photo) {
     if (kind === PHOTO_KINDS.pickup && theirs.exists()) {
       tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
     }
-    if (finalReturn) {
-      // L7 / LS6 / P1 / P2: receipt, reactivation and both point awards are atomic.
-      if (lenderPoints.exists() || borrowerPoints.exists()) throw new Error('Completion points have already been awarded.');
+    if (kind === PHOTO_KINDS.return && uid === request.ownerId) {
+      // LS6: the return and listing reactivation must succeed or fail together.
       tx.update(listingRef, { status: 'Active', approvedRequestId: null });
-      for (const [userRef, userSnap, recordRef, userId, points] of [
-        [lenderUserRef, lenderUser, lenderPointsRef, request.ownerId, 10],
-        [borrowerUserRef, borrowerUser, borrowerPointsRef, request.requesterId, 5],
-      ]) {
-        const previous = userSnap.exists() ? Number(userSnap.data().totalPoints) || 0 : 0;
-        tx.set(userRef, { totalPoints: previous + points, lastPointsRequestId: requestId }, { merge: true });
-        tx.set(recordRef, { requestId, userId, points, reason: 'Completed borrowing transaction', createdAt: serverTimestamp() });
-      }
     }
     if (kind === PHOTO_KINDS.return) {
       tx.update(requestRef, {
