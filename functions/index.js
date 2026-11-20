@@ -28,11 +28,10 @@ export const awardBorrowingCompletionPoints = onDocumentUpdated(
         record: db.doc(`pointsRecords/${requestId}_${uid}`),
       }));
       // Read all documents before any write (Firestore transaction requirement).
-      const snapshots = await Promise.all(refs.flatMap(({ user, record }) =>
-        [tx.get(user), tx.get(record)]));
+      const snapshots = await Promise.all(refs.map(({ record }) => tx.get(record)));
       for (let i = 0; i < refs.length; i += 1) {
         const { uid, user, record } = refs[i];
-        const [userSnap, recordSnap] = snapshots.slice(i * 2, i * 2 + 2);
+        const recordSnap = snapshots[i];
         if (recordSnap.exists) continue;
         const points = participants[i][1];
         tx.set(user, {
