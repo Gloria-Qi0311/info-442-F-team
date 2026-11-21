@@ -1,0 +1,17 @@
+.txn-timeline { list-style: none; margin: 16px 0; padding: 0; }
+.txn-timeline-step { position: relative; display: flex; align-items: center; gap: 12px; padding-bottom: 20px; color: #777; }
+.txn-timeline-step:last-child { padding-bottom: 0; }
+.txn-timeline-step:not(:last-child)::after { content: ''; position: absolute; left: 15px; top: 32px; bottom: 0; width: 2px; background: #ddd; }
+.txn-timeline-step.completed:not(:last-child)::after { background: var(--purple); }
+.txn-timeline-marker { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border: 2px solid #ccc; background: #fff; font-weight: 600; font-size: 0.875rem; }
+.txn-timeline-step.completed { color: #222; }
+.txn-timeline-step.completed .txn-timeline-marker { background: var(--purple); border-color: var(--purple); color: #fff; }
+.txn-timeline-step.current { color: var(--purple); font-weight: 700; }
+.txn-timeline-step.current .txn-timeline-marker { border-color: var(--purple); color: var(--purple); box-shadow: 0 0 0 4px rgba(75, 46, 131, 0.18); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (min-width: 560px) {
+  .txn-timeline { display: flex; }
+  .txn-timeline-step { flex: 1; flex-direction: column; text-align: center; gap: 8px; padding-bottom: 0; }
+  .txn-timeline-step:not(:last-child)::after { left: calc(50% + 20px); right: calc(-50% + 20px); top: 15px; bottom: auto; width: auto; height: 2px; }
+}

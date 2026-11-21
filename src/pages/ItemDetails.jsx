@@ -165,6 +165,11 @@ function RequestPanel({ listing, available }) {
           {request.pickupDate && <p>Pickup date: {request.pickupDate}</p>}
           {request.pickupTime && <p>Pickup time: {request.pickupTime}</p>}
           {request.pickupLocation && <p>Pickup location: {request.pickupLocation}</p>}
+          <p>
+            <Link to={`/transactions/${listing.type === LISTING_TYPES.sell ? 'buyer' : 'recipient'}/${request.id}`}>
+              {listing.type === LISTING_TYPES.sell ? 'View Ongoing Purchase' : 'View Ongoing Giveaway'}
+            </Link>
+          </p>
         </div>
       )}
       {status === REQUEST_STATUS.declined && (

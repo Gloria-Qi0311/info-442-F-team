@@ -2,10 +2,31 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../auth/AuthContext';
+import TransactionTimeline from '../components/TransactionTimeline';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from '../data/schema';
 import { confirmExchange, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
 import './ItemDetails.css';
+
+// L5/B5 lending, S6 selling, G4 giving.
+const ROLES = {
+  lender: { type: LISTING_TYPES.lend, owner: true },
+  borrower: { type: LISTING_TYPES.lend, owner: false },
+  seller: { type: LISTING_TYPES.sell, owner: true },
+  buyer: { type: LISTING_TYPES.sell, owner: false },
+  giver: { type: LISTING_TYPES.give, owner: true },
+  recipient: { type: LISTING_TYPES.give, owner: false },
+};
+const TITLES = {
+  [LISTING_TYPES.lend]: 'Ongoing Borrowing',
+  [LISTING_TYPES.sell]: 'Ongoing Purchase',
+  [LISTING_TYPES.give]: 'Ongoing Giveaway',
+};
+const TIMELINES = {
+  [LISTING_TYPES.lend]: STAGES,
+  [LISTING_TYPES.sell]: [TRANSACTION_STAGE.approved, TRANSACTION_STAGE.pickup],
+  [LISTING_TYPES.give]: [TRANSACTION_STAGE.approved, TRANSACTION_STAGE.pickup, 'Rate'],
+};
 
 export default function OngoingBorrowing() {
   const { requestId, role, action } = useParams();
@@ -19,9 +40,12 @@ export default function OngoingBorrowing() {
   const [preview, setPreview] = useState('');
   const [myPickupConfirmed, setMyPickupConfirmed] = useState(false);
   const [myReturnConfirmed, setMyReturnConfirmed] = useState(false);
-  const isOwner = role === 'lender';
-  const validRole = role === 'lender' || role === 'borrower';
-  const validAction = !action || action === 'pickup' || action === 'return';
+  const roleInfo = ROLES[role];
+  const isOwner = Boolean(roleInfo?.owner);
+  const type = roleInfo?.type;
+  const isLend = type === LISTING_TYPES.lend;
+  const validRole = Boolean(roleInfo);
+  const validAction = !action || action === 'pickup' || (isLend && action === 'return');
 
   useEffect(() => {
     if (!user || !requestId) return undefined;
@@ -51,11 +75,12 @@ export default function OngoingBorrowing() {
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
   const permitted = validRole && validAction && request
-    && request.listingType === LISTING_TYPES.lend
+    && request.listingType === type
     && request.status === REQUEST_STATUS.approved
     && isParticipant(request, user?.uid)
     && (isOwner ? request.ownerId === user?.uid : request.requesterId === user?.uid);
   const stage = request?.stage || TRANSACTION_STAGE.approved;
+  const timeline = TIMELINES[type] || STAGES;
   const base = `/transactions/${role}/${requestId}`;
   const expected = action === PHOTO_KINDS.pickup ? TRANSACTION_STAGE.approved
     : isOwner ? TRANSACTION_STAGE.return : TRANSACTION_STAGE.pickup;
@@ -79,12 +104,12 @@ export default function OngoingBorrowing() {
   return (
     <main className="page item-details">
       <Link to="/manage">Back to Manage</Link>
-      <h1>{action === 'pickup' ? 'Pickup Confirmation' : action === 'return' ? 'Return Confirmation' : 'Ongoing Borrowing'}</h1>
+      <h1>{action === 'pickup' ? 'Pickup Confirmation' : action === 'return' ? 'Return Confirmation' : TITLES[type] || 'Ongoing Transaction'}</h1>
       {loading ? <p role="status">Loading transaction...</p> : !permitted ? (
         <p role="alert">This transaction is not available to your account.</p>
       ) : (
         <>
-          <h2>{request.listingTitle || 'Borrowed item'}</h2>
+          <h2>{request.listingTitle || 'Item'}</h2>
           <section className="item-request">
             <h3>Ready for pick up</h3>
             <p><strong>Pickup day:</strong> {request.pickupDate || 'Not set'}</p>
@@ -92,14 +117,21 @@ export default function OngoingBorrowing() {
             <p><strong>Pickup location:</strong> {request.pickupLocation || 'Not set'}</p>
           </section>
           <h3>Transaction progress</h3>
-          <ol aria-label="Transaction timeline">
-            {STAGES.map((step, index) => (
-              <li key={step} aria-current={step === stage ? 'step' : undefined}>
-                {step}{STAGES.indexOf(stage) > index ? ' ✓' : step === stage ? ' — Current' : ''}
-              </li>
-            ))}
-          </ol>
-          {action ? (
+          <TransactionTimeline stages={timeline} currentStage={stage} />
+          {action && !isLend ? (
+            <p>Pickup confirmation for this transaction is not available yet.</p>
+          ) : !isLend ? (
+            <>
+              {stage === TRANSACTION_STAGE.approved && (
+                (type === LISTING_TYPES.sell ? !isOwner : isOwner)
+                  ? <Link to={`${base}/pickup`}>Mark as Picked Up</Link>
+                  : <p>Waiting for the {type === LISTING_TYPES.sell ? 'buyer' : 'giver'} to mark the item as picked up.</p>
+              )}
+              {stage === TRANSACTION_STAGE.pickup && (
+                <p>{type === LISTING_TYPES.sell ? 'Pickup completed. The sale is complete.' : 'Pickup completed.'}</p>
+              )}
+            </>
+          ) : action ? (
             ((action === PHOTO_KINDS.pickup && myPickupConfirmed) ||
               (action === PHOTO_KINDS.return && myReturnConfirmed)) ? (
               <p>{action === PHOTO_KINDS.pickup
