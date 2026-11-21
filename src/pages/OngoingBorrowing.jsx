@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../auth/AuthContext';
+import TransactionTimeline from '../components/TransactionTimeline';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from '../data/schema';
 import { confirmExchange, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
@@ -116,13 +117,7 @@ export default function OngoingBorrowing() {
             <p><strong>Pickup location:</strong> {request.pickupLocation || 'Not set'}</p>
           </section>
           <h3>Transaction progress</h3>
-          <ol aria-label="Transaction timeline">
-            {timeline.map((step, index) => (
-              <li key={step} aria-current={step === stage ? 'step' : undefined}>
-                {step}{timeline.indexOf(stage) > index ? ' ✓' : step === stage ? ' — Current' : ''}
-              </li>
-            ))}
-          </ol>
+          <TransactionTimeline stages={timeline} currentStage={stage} />
           {action && !isLend ? (
             <p>Pickup confirmation for this transaction is not available yet.</p>
           ) : !isLend ? (
