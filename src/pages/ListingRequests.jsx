@@ -11,6 +11,17 @@ import './ItemDetails.css';
 // Issue #14: sellers (S3) and givers (G3) see the requests for one of their listings.
 // Approving and declining requests is added in Issue #16.
 
+const OWNER_ROLE = {
+  [LISTING_TYPES.lend]: 'lender',
+  [LISTING_TYPES.sell]: 'seller',
+  [LISTING_TYPES.give]: 'giver',
+};
+const ONGOING_TEXT = {
+  [LISTING_TYPES.lend]: 'View Ongoing Borrowing',
+  [LISTING_TYPES.sell]: 'View Ongoing Purchase',
+  [LISTING_TYPES.give]: 'View Ongoing Giveaway',
+};
+
 const PAGE_TEXT = {
   [LISTING_TYPES.sell]: { heading: 'Purchase requests', requester: 'Buyer' },
   [LISTING_TYPES.give]: { heading: 'Giveaway requests', requester: 'Recipient' },
@@ -93,8 +104,8 @@ export default function ListingRequests() {
       if (decision === 'approve') await reconcilePendingRequests(listingId, user.uid);
       setRequests(await getRequestsForListing(listingId, user.uid));
       setApprovingId('');
-      if (decision === 'approve' && type === LISTING_TYPES.lend) {
-        navigate(`/transactions/lender/${request.id}`);
+      if (decision === 'approve' && OWNER_ROLE[type]) {
+        navigate(`/transactions/${OWNER_ROLE[type]}/${request.id}`);
       }
     } catch (cause) {
       setActionError(cause.message || 'Could not update request. Please try again.');
@@ -129,8 +140,8 @@ export default function ListingRequests() {
       ) : !requests.some(request => request.status === REQUEST_STATUS.pending) ? (
         <>
           <p role="status">No pending requests</p>
-          {type === LISTING_TYPES.lend && requests.filter(request => request.status === REQUEST_STATUS.approved).map(request => (
-            <p key={request.id}><Link to={`/transactions/lender/${request.id}`}>View Ongoing Borrowing: {request.listingTitle || 'Item'}</Link></p>
+          {OWNER_ROLE[type] && requests.filter(request => request.status === REQUEST_STATUS.approved).map(request => (
+            <p key={request.id}><Link to={`/transactions/${OWNER_ROLE[type]}/${request.id}`}>{ONGOING_TEXT[type]}: {request.listingTitle || 'Item'}</Link></p>
           ))}
         </>
       ) : requests.length === 0 ? (
@@ -164,8 +175,8 @@ export default function ListingRequests() {
               {request.startDate && <p>Borrow: {request.startDate} to {request.endDate}</p>}
               {request.pickupPreference && <p>Pickup preference: {request.pickupPreference}</p>}
               {request.purpose && <p>Purpose: {request.purpose}</p>}
-              {type === LISTING_TYPES.lend && request.status === REQUEST_STATUS.approved && (
-                <p><Link to={`/transactions/lender/${request.id}`}>View Ongoing Borrowing</Link></p>
+              {OWNER_ROLE[type] && request.status === REQUEST_STATUS.approved && (
+                <p><Link to={`/transactions/${OWNER_ROLE[type]}/${request.id}`}>{ONGOING_TEXT[type]}</Link></p>
               )}
               {request.status === REQUEST_STATUS.approved && request.pickupLocation && (
                 <p>Pickup: {request.pickupDate} at {request.pickupTime}, {request.pickupLocation}</p>

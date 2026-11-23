@@ -214,6 +214,16 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['viewedByOwner']))
         ||
+        // S6.7–S6.9, G4.8–G4.11: the buyer (sell) or the giver (give) marks the item as picked up.
+        (resource.data.listingType in ['sell', 'give']
+          && resource.data.status == 'Approved'
+          && request.resource.data.status == 'Approved'
+          && resource.data.get('stage', 'Approved') == 'Approved'
+          && request.resource.data.stage == 'Pickup'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage'])
+          && request.auth.uid == (resource.data.listingType == 'sell'
+            ? resource.data.requesterId : resource.data.ownerId))
+        ||
         // Pickup moves forward only when BOTH parties have uploaded a photo.
         (resource.data.listingType == 'lend'
           && request.auth.uid in [resource.data.ownerId, resource.data.requesterId]
