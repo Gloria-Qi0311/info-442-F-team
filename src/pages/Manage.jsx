@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { getMySentRequests } from '../data/requests';
 import { LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
+import RequestStatusBadge from '../components/RequestStatusBadge';
 
 const LISTING_LINKS = [
   { to: '/manage/lend', label: 'My lending listings' },
@@ -67,9 +68,7 @@ function SentRequests() {
             </div>
           </div>
           <div>
-            <span className={`request-status request-status-${String(request.status).toLowerCase()}`}>
-              {request.status}
-            </span>
+            <RequestStatusBadge status={request.status} />
           </div>
         </li>
       ))}
