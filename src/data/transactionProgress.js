@@ -123,3 +123,23 @@ export async function confirmExchange(requestId, uid, kind, photo) {
   }
   return photoUrl;
 }
+
+// S6.7–S6.9, G4.8–G4.11: for selling, the buyer marks the item as picked up.
+// For giving, the giver marks it. If anything fails, the stage stays the same.
+export async function confirmSellGivePickup(requestId, uid) {
+  const requestRef = doc(db, COLLECTIONS.requests, requestId);
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(requestRef);
+    if (!snap.exists()) throw new Error('Request not found.');
+    const request = snap.data();
+    if (request.status !== REQUEST_STATUS.approved) throw new Error('This transaction is not approved.');
+    let confirmerId = null;
+    if (request.listingType === LISTING_TYPES.sell) confirmerId = request.requesterId;
+    if (request.listingType === LISTING_TYPES.give) confirmerId = request.ownerId;
+    if (confirmerId !== uid) throw new Error('Only the buyer or the giver can confirm this pickup.');
+    if ((request.stage || TRANSACTION_STAGE.approved) !== TRANSACTION_STAGE.approved) {
+      throw new Error('This item has already been picked up.');
+    }
+    tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
+  });
+}

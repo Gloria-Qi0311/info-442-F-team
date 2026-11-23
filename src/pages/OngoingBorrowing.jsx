@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import TransactionTimeline from '../components/TransactionTimeline';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from '../data/schema';
-import { confirmExchange, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
+import { confirmExchange, confirmSellGivePickup, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
 import './ItemDetails.css';
 
 // L5/B5 lending, S6 selling, G4 giving.
@@ -82,6 +82,8 @@ export default function OngoingBorrowing() {
   const stage = request?.stage || TRANSACTION_STAGE.approved;
   const timeline = TIMELINES[type] || STAGES;
   const base = `/transactions/${role}/${requestId}`;
+  // Sell: the buyer confirms pickup. Give: the giver confirms pickup.
+  const canMarkPickup = type === LISTING_TYPES.sell ? !isOwner : isOwner;
   const expected = action === PHOTO_KINDS.pickup ? TRANSACTION_STAGE.approved
     : isOwner ? TRANSACTION_STAGE.return : TRANSACTION_STAGE.pickup;
 
@@ -96,6 +98,23 @@ export default function OngoingBorrowing() {
       setError(cause.message === 'Please upload a photo.'
         ? cause.message
         : `${step} could not be confirmed. ${cause.message || 'Please try again.'}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function markPickedUp() {
+    setBusy(true);
+    setError('');
+    try {
+      await confirmSellGivePickup(requestId, user.uid);
+      if (type === LISTING_TYPES.give) {
+        navigate(`${base}/complete`, { replace: true });
+      } else {
+        navigate(base, { replace: true });
+      }
+    } catch (cause) {
+      setError(`Pickup could not be confirmed. ${cause.message || 'Please try again.'}`);
     } finally {
       setBusy(false);
     }
@@ -119,16 +138,27 @@ export default function OngoingBorrowing() {
           <h3>Transaction progress</h3>
           <TransactionTimeline stages={timeline} currentStage={stage} />
           {action && !isLend ? (
-            <p>Pickup confirmation for this transaction is not available yet.</p>
+            !canMarkPickup ? (
+              <p>Only the {type === LISTING_TYPES.sell ? 'buyer' : 'giver'} can confirm this pickup.</p>
+            ) : stage === TRANSACTION_STAGE.approved ? (
+              <section className="item-request">
+                <p>Please confirm that the item has been picked up.</p>
+                <button type="button" disabled={busy} onClick={markPickedUp}>
+                  {busy ? 'Saving...' : 'Confirm Pickup'}
+                </button>
+              </section>
+            ) : <p>This item has already been picked up.</p>
           ) : !isLend ? (
             <>
               {stage === TRANSACTION_STAGE.approved && (
-                (type === LISTING_TYPES.sell ? !isOwner : isOwner)
+                canMarkPickup
                   ? <Link to={`${base}/pickup`}>Mark as Picked Up</Link>
                   : <p>Waiting for the {type === LISTING_TYPES.sell ? 'buyer' : 'giver'} to mark the item as picked up.</p>
               )}
               {stage === TRANSACTION_STAGE.pickup && (
-                <p>{type === LISTING_TYPES.sell ? 'Pickup completed. The sale is complete.' : 'Pickup completed.'}</p>
+                type === LISTING_TYPES.sell
+                  ? <p>Pickup completed. The sale is complete.</p>
+                  : <p>Pickup completed. <Link to={`${base}/complete`}>Go to Points & Rating</Link></p>
               )}
             </>
           ) : action ? (

@@ -15,9 +15,11 @@ export async function getCompletion(requestId, uid) {
   const snap = await getDoc(doc(db, COLLECTIONS.requests, requestId));
   if (!snap.exists()) throw new Error('Transaction not found.');
   const request = snap.data();
-  if (request.listingType !== LISTING_TYPES.lend
+  // Lending finishes at Received. A giveaway finishes at Pickup (G4 → G5).
+  const lendDone = request.listingType === LISTING_TYPES.lend && request.stage === TRANSACTION_STAGE.received;
+  const giveDone = request.listingType === LISTING_TYPES.give && request.stage === TRANSACTION_STAGE.pickup;
+  if (!(lendDone || giveDone)
     || request.status !== REQUEST_STATUS.approved
-    || request.stage !== TRANSACTION_STAGE.received
     || ![request.ownerId, request.requesterId].includes(uid)) {
     throw new Error('This transaction is not ready for rating.');
   }

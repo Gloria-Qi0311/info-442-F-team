@@ -18,7 +18,8 @@ export default function ReturnComplete() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [pointsRecorded, setPointsRecorded] = useState(false);
-  const isLender = role === 'lender';
+  const isGive = role === 'giver' || role === 'recipient';
+  const isLender = role === 'lender' || role === 'giver';
 
   useEffect(() => {
     if (!user) return undefined;
@@ -72,39 +73,48 @@ export default function ReturnComplete() {
 
   return (
     <main className="page item-details">
-      <Link to={`/transactions/${role}/${requestId}`}>Back to Ongoing Borrowing</Link>
-      <h1>Return Complete & Rating</h1>
+      <Link to={`/transactions/${role}/${requestId}`}>{isGive ? 'Back to Ongoing Giveaway' : 'Back to Ongoing Borrowing'}</Link>
+      <h1>{isGive ? 'Giveaway Complete' : 'Return Complete & Rating'}</h1>
       {loading ? <p role="status">Loading...</p> : completion ? (
         <>
-          <h2>{completion.request.listingTitle || 'Item returned'}</h2>
-          <p><strong>Points earned:</strong> {pointsRecorded ? `+${isLender ? 10 : 5} points` : 'Processing completion points...'}</p>
-          <p><strong>Your total points:</strong> {completion.totalPoints}</p>
-          {completion.rated ? (
-            <p role="status">{success ? 'Rating submitted successfully!' : 'You have already rated this transaction.'}</p>
+          <h2>{completion.request.listingTitle || (isGive ? 'Item given away' : 'Item returned')}</h2>
+          {isGive ? (
+            <>
+              <p>The item has been picked up. Thank you for giving it away!</p>
+              <p><strong>Your total points:</strong> {completion.totalPoints}</p>
+            </>
           ) : (
-            <form onSubmit={submit} noValidate>
-              <h3>Rate {isLender ? 'borrower' : 'lender'}</h3>
-              <fieldset>
-                <legend>Stars</legend>
-                {[1, 2, 3, 4, 5].map(n => (
-                  <button key={n} type="button" aria-label={`${n} stars`}
-                    aria-pressed={stars === n} onClick={() => setStars(n)}>
-                    {n <= stars ? '★' : '☆'}
-                  </button>
-                ))}
-              </fieldset>
-              <fieldset>
-                <legend>Feedback tags</legend>
-                {FEEDBACK_TAGS[role]?.map(tag => (
-                  <label key={tag} style={{ display: 'block' }}>
-                    <input type="checkbox" checked={tags.includes(tag)}
-                      onChange={event => setTags(current => event.target.checked ? [...current, tag] : current.filter(value => value !== tag))} />
-                    {tag}
-                  </label>
-                ))}
-              </fieldset>
-              <button type="submit" disabled={busy}>{busy ? 'Submitting...' : 'Submit'}</button>
-            </form>
+            <>
+              <p><strong>Points earned:</strong> {pointsRecorded ? `+${isLender ? 10 : 5} points` : 'Processing completion points...'}</p>
+              <p><strong>Your total points:</strong> {completion.totalPoints}</p>
+              {completion.rated ? (
+                <p role="status">{success ? 'Rating submitted successfully!' : 'You have already rated this transaction.'}</p>
+              ) : (
+                <form onSubmit={submit} noValidate>
+                  <h3>Rate {isLender ? 'borrower' : 'lender'}</h3>
+                  <fieldset>
+                    <legend>Stars</legend>
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <button key={n} type="button" aria-label={`${n} stars`}
+                        aria-pressed={stars === n} onClick={() => setStars(n)}>
+                        {n <= stars ? '★' : '☆'}
+                      </button>
+                    ))}
+                  </fieldset>
+                  <fieldset>
+                    <legend>Feedback tags</legend>
+                    {FEEDBACK_TAGS[role]?.map(tag => (
+                      <label key={tag} style={{ display: 'block' }}>
+                        <input type="checkbox" checked={tags.includes(tag)}
+                          onChange={event => setTags(current => event.target.checked ? [...current, tag] : current.filter(value => value !== tag))} />
+                        {tag}
+                      </label>
+                    ))}
+                  </fieldset>
+                  <button type="submit" disabled={busy}>{busy ? 'Submitting...' : 'Submit'}</button>
+                </form>
+              )}
+            </>
           )}
         </>
       ) : null}
