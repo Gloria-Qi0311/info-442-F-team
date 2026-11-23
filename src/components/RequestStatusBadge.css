@@ -25,7 +25,7 @@
   color: #991b1b;
 }
 
-.request-status-badge.cancelled {
+.request-status-badge.canceled {
   background-color: #e5e7eb;
   color: #374151;
 }
