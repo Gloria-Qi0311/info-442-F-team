@@ -6,7 +6,7 @@ export default function RequestStatusBadge({ status }) {
     pending: 'Pending',
     approved: 'Approved',
     declined: 'Declined',
-    cancelled: 'Cancelled'
+    canceled: 'Canceled'
   };
 
   const normalizedStatus = String(status || '')
