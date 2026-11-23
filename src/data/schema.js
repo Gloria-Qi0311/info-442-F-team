@@ -18,7 +18,10 @@ export const LISTING_TYPES = { lend: 'lend', sell: 'sell', give: 'give' };
 
 export const LISTING_STATUS = {
   active: 'Active',
-  unavailable: 'Unavailable', // has an approved request in progress
+  onLoan: 'On Loan', // a borrow request has been approved
+  sold: 'Sold', // a purchase request has been approved
+  givenAway: 'Given Away', // a giveaway request has been approved
+  unavailable: 'Unavailable', // legacy value; new approvals use type-specific statuses
   inactive: 'Inactive', // availability window expired
 };
 
@@ -26,7 +29,7 @@ export const REQUEST_STATUS = {
   pending: 'Pending',
   approved: 'Approved',
   declined: 'Declined',
-  cancelled: 'Cancelled',
+  cancelled: 'Canceled',
 };
 
 // Lending timeline: Approved → Pickup → Return → Received.

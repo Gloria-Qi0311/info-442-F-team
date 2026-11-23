@@ -314,6 +314,15 @@ export default function ManageListings() {
                   {pendingCounts[item.id] || 0}
                 </p>
 
+                {/* Issue #14: S3 / G3 view requests for this listing */}
+                {(type === 'lend' || type === 'sell' || type === 'give') && (
+                  <p>
+                    <Link to={`/manage/${type}/${item.id}/requests`}>
+                      View requests
+                    </Link>
+                  </p>
+                )}
+
                 {item.category && (
                   <p>
                     <strong>Category:</strong>{' '}

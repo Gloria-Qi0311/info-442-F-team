@@ -21,8 +21,38 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
+      function completionPointsAward(previous) {
+        let requestId = request.resource.data.lastPointsRequestId;
+        let beforeRequest = get(/databases/$(database)/documents/requests/$(requestId));
+        let afterRequest = getAfter(/databases/$(database)/documents/requests/$(requestId));
+        let recordPath = /databases/$(database)/documents/pointsRecords/$(requestId + '_' + uid);
+        let expectedPoints = uid == beforeRequest.data.ownerId ? 10 : 5;
+        return requestId is string
+          && beforeRequest.data.listingType == 'lend'
+          && beforeRequest.data.status == 'Approved'
+          && beforeRequest.data.stage == 'Return'
+          && afterRequest.data.stage == 'Received'
+          && beforeRequest.data.ownerId == request.auth.uid
+          && uid in [beforeRequest.data.ownerId, beforeRequest.data.requesterId]
+          && !exists(recordPath)
+          && existsAfter(recordPath)
+          && getAfter(recordPath).data.userId == uid
+          && getAfter(recordPath).data.points == expectedPoints
+          && request.resource.data.totalPoints == previous + expectedPoints;
+      }
       allow read: if isUwUser();
-      allow create, update: if isUwUser() && request.auth.uid == uid;
+      allow create: if isUwUser() && request.auth.uid == uid
+        && (!('totalPoints' in request.resource.data) || request.resource.data.totalPoints == 0);
+      allow update: if isUwUser()
+        && (
+          (request.auth.uid == uid
+            && ((!('totalPoints' in resource.data) && !('totalPoints' in request.resource.data))
+              || ('totalPoints' in resource.data && 'totalPoints' in request.resource.data
+                && request.resource.data.totalPoints == resource.data.totalPoints)))
+          || completionPointsAward(
+              ('totalPoints' in resource.data) ? resource.data.totalPoints : 0
+            )
+        );
       allow delete: if false;
     }
 
@@ -34,7 +64,57 @@ service cloud.firestore {
     match /listings/{id} {
       allow read: if isUwUser();
       allow create: if isUwUser() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
+      // Listing approval must be paired with a matching request transition.
+      allow update: if isUwUser() && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['title', 'description', 'category', 'condition',
+                    'photoUrl', 'price', 'pickupAreaId', 'availableFrom',
+                    'availableUntil', 'timeSlot', 'ownerName']);
+      // A requester may increment the listing version only in the same atomic
+      // write that creates (or re-submits) their own Pending request. This lets
+      // the owner approval flow detect requests that arrive during approval.
+      allow update: if isUwUser()
+        && resource.data.status == 'Active'
+        && request.resource.data.status == 'Active'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requestVersion'])
+        && request.resource.data.requestVersion is int
+        && request.resource.data.requestVersion == (('requestVersion' in resource.data && resource.data.requestVersion is int) ? resource.data.requestVersion : 0) + 1
+        && (!exists(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid))
+          || get(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.status == 'Canceled')
+        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.status == 'Pending'
+        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.listingId == id
+        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.requesterId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.ownerId == resource.data.ownerId;
+
+      allow update: if isUwUser() && resource.data.ownerId == request.auth.uid
+        && resource.data.status == 'Active'
+        && request.resource.data.status == (resource.data.type == 'lend' ? 'On Loan'
+          : resource.data.type == 'sell' ? 'Sold'
+          : resource.data.type == 'give' ? 'Given Away' : 'Invalid')
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'approvedRequestId'])
+        && request.resource.data.approvedRequestId is string
+        && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.status
+          == 'Approved'
+        && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.listingId
+          == id
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.status
+          == 'Pending';
+      // LS6: returning a loan reactivates its listing in the same atomic write.
+      allow update: if isUwUser()
+        && resource.data.type == 'lend'
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.status == 'On Loan'
+        && request.resource.data.status == 'Active'
+        && request.resource.data.approvedRequestId == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedRequestId'])
+        && resource.data.approvedRequestId is string
+        && get(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.stage == 'Return'
+        && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.stage == 'Received'
+        && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.listingId == id
+        && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.ownerId == request.auth.uid;
+      allow delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
       // LS9: any UW user may only flip an expired Active listing to Inactive.
       // availableUntil ends at Seattle midnight (UTC-8/-7); +8h keeps it from expiring early.
       allow update: if isUwUser()
@@ -48,18 +128,208 @@ service cloud.firestore {
            ) + duration.value(1, 'd') + duration.value(8, 'h') < request.time;
     }
 
+    // Requesters may submit or cancel their own requests. Only the listing
+    // owner can approve/decline them or mark received requests as viewed.
+    // Keep identity and listing association immutable after creation.
     match /requests/{id} {
-      allow read, write: if isUwUser();
+      function isRequester() {
+        return resource.data.requesterId == request.auth.uid;
+      }
+
+      function isListingOwner() {
+        return resource.data.ownerId == request.auth.uid;
+      }
+
+      function sameIdentity() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'cancelledAt', 'decidedAt', 'stage',
+                    'pickupDate', 'pickupTime', 'pickupLocation', 'viewedByOwner']);
+      }
+
+      // Requesters must be able to check their deterministic request ID before
+      // the first request exists. Keep collection queries restricted to members.
+      allow get: if isUwUser()
+        && (id.matches('.*_' + request.auth.uid)
+          || (resource != null && resource.data.ownerId == request.auth.uid));
+      allow list: if isUwUser()
+        && (resource.data.requesterId == request.auth.uid
+          || resource.data.ownerId == request.auth.uid);
+
+      allow create: if isUwUser()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.ownerId != request.auth.uid
+        && request.resource.data.status == 'Pending'
+        && id == request.resource.data.listingId + '_' + request.auth.uid
+        && exists(/databases/$(database)/documents/listings/$(request.resource.data.listingId))
+        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.ownerId
+          == request.resource.data.ownerId
+        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.type
+          == request.resource.data.listingType
+        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status
+          == 'Active'
+        && getAfter(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status
+          == 'Active'
+        && getAfter(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion
+          == (('requestVersion' in get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data
+            && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion is int)
+            ? get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.requestVersion : 0) + 1;
+
+      allow update: if isUwUser() && (
+        (isRequester()
+          && resource.data.status == 'Pending'
+          && request.resource.data.status == 'Canceled'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'cancelledAt']))
+        ||
+        (isRequester()
+          && resource.data.status == 'Canceled'
+          && request.resource.data.status == 'Pending'
+          && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+          && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+          && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion
+            == (('requestVersion' in get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data
+              && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion is int)
+              ? get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion : 0) + 1
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'stage', 'viewedByOwner', 'createdAt',
+                      'startDate', 'endDate', 'pickupPreference', 'purpose',
+                      'requesterName', 'listingTitle', 'cancelledAt']))
+        ||
+        (isListingOwner()
+          && resource.data.status == 'Pending'
+          && request.resource.data.status in ['Approved', 'Declined']
+          && sameIdentity()
+          && (request.resource.data.status == 'Declined'
+            || (
+              get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status
+                == (resource.data.listingType == 'lend' ? 'On Loan'
+                  : resource.data.listingType == 'sell' ? 'Sold'
+                  : resource.data.listingType == 'give' ? 'Given Away' : 'Invalid')
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == id
+            )))
+        ||
+        (isListingOwner()
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['viewedByOwner']))
+        ||
+        // S6.7–S6.9, G4.8–G4.11: the buyer (sell) or the giver (give) marks the item as picked up.
+        (resource.data.listingType in ['sell', 'give']
+          && resource.data.status == 'Approved'
+          && request.resource.data.status == 'Approved'
+          && resource.data.get('stage', 'Approved') == 'Approved'
+          && request.resource.data.stage == 'Pickup'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage'])
+          && request.auth.uid == (resource.data.listingType == 'sell'
+            ? resource.data.requesterId : resource.data.ownerId))
+        ||
+        // Pickup moves forward only when BOTH parties have uploaded a photo.
+        (resource.data.listingType == 'lend'
+          && request.auth.uid in [resource.data.ownerId, resource.data.requesterId]
+          && resource.data.status == 'Approved'
+          && request.resource.data.status == 'Approved'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage'])
+          && (
+            (resource.data.stage == 'Approved'
+              && request.resource.data.stage == 'Pickup'
+              && existsAfter(/databases/$(database)/documents/confirmationPhotos/$(id + '_pickup_' + resource.data.ownerId))
+              && existsAfter(/databases/$(database)/documents/confirmationPhotos/$(id + '_pickup_' + resource.data.requesterId)))
+            || (resource.data.stage == 'Pickup'
+              && request.resource.data.stage == 'Return'
+              && request.auth.uid == resource.data.requesterId
+              && existsAfter(/databases/$(database)/documents/confirmationPhotos/$(id + '_return_' + resource.data.requesterId)))
+            || (resource.data.stage == 'Return'
+              && request.resource.data.stage == 'Received'
+              && request.auth.uid == resource.data.ownerId
+              && existsAfter(/databases/$(database)/documents/confirmationPhotos/$(id + '_return_' + resource.data.ownerId))
+              && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'On Loan'
+              && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == id
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == null
+              && existsAfter(/databases/$(database)/documents/pointsRecords/$(id + '_' + resource.data.ownerId))
+              && existsAfter(/databases/$(database)/documents/pointsRecords/$(id + '_' + resource.data.requesterId)))
+          ))
+      );
+
+      allow delete: if false;
     }
     match /confirmationPhotos/{id} {
-      allow read, write: if isUwUser();
+      function matchingRequest() {
+        return get(/databases/$(database)/documents/requests/$(request.resource.data.requestId));
+      }
+      // get must also work for not-yet-created confirmation documents.
+      allow get: if isUwUser()
+        && (resource == null || (
+          get(/databases/$(database)/documents/requests/$(resource.data.requestId)).data.ownerId == request.auth.uid
+          || get(/databases/$(database)/documents/requests/$(resource.data.requestId)).data.requesterId == request.auth.uid));
+      allow list: if false;
+      allow create: if isUwUser()
+        && request.resource.data.keys().hasOnly(['requestId', 'userId', 'kind', 'photoUrl', 'createdAt'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.kind in ['pickup', 'return']
+        && request.resource.data.photoUrl is string
+        && request.resource.data.photoUrl.size() > 0
+        && id == request.resource.data.requestId + '_' + request.resource.data.kind + '_' + request.auth.uid
+        && matchingRequest().data.status == 'Approved'
+        && matchingRequest().data.listingType == 'lend'
+        && request.auth.uid in [matchingRequest().data.ownerId, matchingRequest().data.requesterId]
+        && (request.resource.data.kind == 'pickup'
+          ? matchingRequest().data.stage == 'Approved'
+          : (request.auth.uid == matchingRequest().data.requesterId
+              ? matchingRequest().data.stage == 'Pickup'
+              : matchingRequest().data.stage == 'Return'));
+      allow update, delete: if false;
     }
     match /ratings/{id} {
-      allow read, write: if isUwUser();
+      allow read: if isUwUser();
+      allow create: if isUwUser()
+        && request.resource.data.keys().hasOnly(['requestId', 'raterId', 'rateeId', 'stars', 'tags', 'createdAt'])
+        && request.resource.data.raterId == request.auth.uid
+        && id == request.resource.data.requestId + '_' + request.auth.uid
+        && request.resource.data.stars is int
+        && request.resource.data.stars >= 1
+        && request.resource.data.stars <= 5
+        && request.resource.data.tags is list
+        && request.resource.data.tags.size() <= 4
+        && request.resource.data.tags.hasOnly(['On time', 'Polite', 'Gentle use', 'Quickly reply'])
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
+        && (
+          (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
+            && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId == request.resource.data.rateeId)
+          || (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId == request.auth.uid
+            && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.resource.data.rateeId)
+        );
+      allow update, delete: if false;
     }
     match /pointsRecords/{id} {
-      allow read: if isUwUser();
-      allow write: if false;
+      allow read: if isUwUser() && resource.data.userId == request.auth.uid;
+      allow create: if isUwUser()
+        && request.resource.data.keys().hasOnly(['requestId', 'userId', 'points', 'reason', 'createdAt'])
+        && id == request.resource.data.requestId + '_' + request.resource.data.userId
+        && request.resource.data.reason == 'Completed borrowing transaction'
+        && !exists(/databases/$(database)/documents/pointsRecords/$(id))
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Return'
+        && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
+        && request.resource.data.userId in [
+          get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId,
+          get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId
+        ]
+        && request.resource.data.points == (
+          request.resource.data.userId
+            == get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId
+          ? 10 : 5
+        )
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints
+          == (('totalPoints' in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data)
+            ? get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints : 0)
+            + request.resource.data.points;
+      allow update, delete: if false;
     }
 
     match /{document=**} {

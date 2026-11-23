@@ -5,7 +5,12 @@ import ProtectedRoute from './components/ProtectedRoute';
 import MapPage from './pages/MapPage';
 import Manage from './pages/Manage';
 import ManageListings from './pages/ManageListings';
+import ListingRequests from './pages/ListingRequests';
 import ItemDetails from './pages/ItemDetails';
+import BorrowRequestForm from './pages/BorrowRequestForm';
+import BorrowRequestStatus from './pages/BorrowRequestStatus';
+import OngoingBorrowing from './pages/OngoingBorrowing';
+import ReturnComplete from './pages/ReturnComplete';
 import Account from './pages/Account';
 import PostItem from './pages/PostItem';
 import ListingForm from './pages/ListingForm';
@@ -33,13 +38,19 @@ export default function App() {
             <Route path="/map" element={<MapPage />} />
             <Route path="/manage" element={<Manage />} />
             <Route path="/manage/:type" element={<ManageListings />} />
+            <Route path="/manage/:type/:listingId/requests" element={<ListingRequests />} />
             <Route path="/account" element={<Account />} />
             <Route path="/post" element={<PostItem />} />
             <Route path="/post/lend" element={<ListingForm key="lend" type="lend" />} />
             <Route path="/post/sell" element={<ListingForm key="sell" type="sell" />} />
             <Route path="/post/give" element={<ListingForm key="give" type="give" />} />
             <Route path="/listings/:listingId" element={<ItemDetails />} />
+            <Route path="/listings/:listingId/borrow" element={<BorrowRequestForm />} />
+            <Route path="/listings/:listingId/borrow/status" element={<BorrowRequestStatus />} />
             <Route path="/listings/:listingId/confirmation" element={<ListingConfirmation />} />
+            <Route path="/transactions/:role/:requestId" element={<OngoingBorrowing />} />
+            <Route path="/transactions/:role/:requestId/complete" element={<ReturnComplete />} />
+            <Route path="/transactions/:role/:requestId/:action" element={<OngoingBorrowing />} />
             <Route path="/dev/db-check" element={<DbCheck />} />
           </Route>
           <Route path="*" element={<Navigate to="/map" replace />} />
