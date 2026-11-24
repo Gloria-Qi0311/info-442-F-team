@@ -80,7 +80,7 @@ export default function ReturnComplete() {
       setCompletion(previous => ({ ...previous, rated: true }));
       setSuccess(true);
     } catch (cause) {
-      setError(cause.message || 'Could not save rating. Please try again.');
+      setError(`Your rating could not be saved. ${cause.message || 'Please try again.'}`);
     } finally {
       setBusy(false);
     }
