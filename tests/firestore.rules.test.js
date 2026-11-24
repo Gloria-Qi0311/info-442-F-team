@@ -5,7 +5,7 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, writeBatch, runTransaction } from 'firebase/firestore';
 
 const projectId = 'demo-husky-share';
 let testEnv;
@@ -670,4 +670,68 @@ test('giveaway pickup creates missing giver profile and grants points once', asy
   await assertSucceeds(pickup.commit());
   const user = await getDoc(doc(giver, 'users/owner-1'));
   if (user.data().totalPoints !== 15) throw new Error('Giveaway points missing.');
+});
+
+
+test('giveaway pickup transaction can award points without reading a missing points record', async () => {
+  const requestId = 'give-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/' + requestId), {
+      listingId: 'give-1', listingType: 'give', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
+    });
+  });
+  const db = uwContext('owner-1');
+  await assertSucceeds(runTransaction(db, async tx => {
+    const requestRef = doc(db, 'requests/' + requestId);
+    const userRef = doc(db, 'users/owner-1');
+    const recordRef = doc(db, 'pointsRecords/' + requestId + '_owner-1');
+    const requestSnap = await tx.get(requestRef);
+    const userSnap = await tx.get(userRef);
+    if (requestSnap.data().stage !== 'Approved') throw new Error('Already picked up');
+    tx.set(userRef, {
+      totalPoints: (userSnap.exists() ? userSnap.data().totalPoints : 0) + 15,
+      lastPointsRequestId: requestId,
+    });
+    tx.set(recordRef, {
+      requestId, userId: 'owner-1', points: 15,
+      reason: 'Completed giveaway transaction', createdAt: new Date(),
+    });
+    tx.update(requestRef, { stage: 'Pickup' });
+  }));
+  const user = await getDoc(doc(db, 'users/owner-1'));
+  if (user.data().totalPoints !== 15) throw new Error('Missing points');
+  await assertFails(runTransaction(db, async tx => {
+    const requestRef = doc(db, 'requests/' + requestId);
+    const requestSnap = await tx.get(requestRef);
+    if (requestSnap.data().stage !== 'Approved') throw new Error('Already picked up');
+    tx.update(requestRef, { stage: 'Pickup' });
+  }));
+});
+
+test('giver can atomically rate recipient after successful giveaway pickup', async () => {
+  const requestId = 'give-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/' + requestId), {
+      listingId: 'give-1', listingType: 'give', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Pickup',
+    });
+  });
+  const db = uwContext('owner-1');
+  await assertSucceeds(runTransaction(db, async tx => {
+    const requestRef = doc(db, 'requests/' + requestId);
+    const ratingRef = doc(db, 'ratings/' + requestId + '_owner-1');
+    const requestSnap = await tx.get(requestRef);
+    const ratingSnap = await tx.get(ratingRef);
+    if (ratingSnap.exists() || requestSnap.data().stage !== 'Pickup') throw new Error('Not eligible');
+    tx.set(ratingRef, {
+      requestId, raterId: 'owner-1', rateeId: requestSnap.data().requesterId,
+      stars: 5, tags: ['Polite'], createdAt: new Date(),
+    });
+    tx.update(requestRef, { stage: 'Rate' });
+  }));
+  const rating = await getDoc(doc(db, 'ratings/' + requestId + '_owner-1'));
+  if (rating.data().rateeId !== 'requester-1') throw new Error('Wrong rating recipient');
+  const request = await getDoc(doc(db, 'requests/' + requestId));
+  if (request.data().stage !== 'Rate') throw new Error('Stage not advanced');
 });
