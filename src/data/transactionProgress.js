@@ -56,8 +56,7 @@ export async function confirmExchange(requestId, uid, kind, photo) {
   const otherId = current.ownerId === uid ? current.requesterId : current.ownerId;
   const otherRef = doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, kind, otherId));
   const listingRef = doc(db, COLLECTIONS.listings, current.listingId);
-  try {
-    await runTransaction(db, async tx => {
+  await runTransaction(db, async tx => {
       const isReceivingReturn = kind === PHOTO_KINDS.return && uid === current.ownerId;
       const reads = [tx.get(requestRef), tx.get(myRef), tx.get(otherRef)];
       if (isReceivingReturn) {
@@ -116,9 +115,6 @@ export async function confirmExchange(requestId, uid, kind, photo) {
         });
       }
     });
-  } catch (cause) {
-    throw cause;
-  }
   return photoUrl;
 }
 
