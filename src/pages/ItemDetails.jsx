@@ -255,12 +255,6 @@ export default function ItemDetails() {
             <Detail label="Available until" value={displayDate(listing.availableUntil)} />
             <Detail label="Available time slot" value={listing.timeSlot} />
           </dl>
-          {listing.description && (
-            <section className="item-details-description">
-              <h2>Description</h2>
-              <p>{listing.description}</p>
-            </section>
-          )}
           <RequestPanel listing={listing} available={available} />
         </>
       )}

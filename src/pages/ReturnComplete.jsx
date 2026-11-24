@@ -57,13 +57,26 @@ export default function ReturnComplete() {
     return () => { unsubscribeRecord(); unsubscribeUser(); };
   }, [requestId, user]);
 
+  // R11: an offline save never finishes, so fail right away when offline
+  // and stop waiting after 15 seconds.
+  function saveWithTimeout(save) {
+    if (!navigator.onLine) return Promise.reject(new Error('You are offline.'));
+    const saving = save();
+    saving.catch(() => {});
+    let timer;
+    const timedOut = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Saving timed out. Refresh the page before trying again.')), 15000);
+    });
+    return Promise.race([saving, timedOut]).finally(() => clearTimeout(timer));
+  }
+
   async function submit(event) {
     event.preventDefault();
     if (!stars) { setError('Please select a star rating.'); return; }
     setBusy(true);
     setError('');
     try {
-      await submitRating(requestId, user.uid, stars, tags);
+      await saveWithTimeout(() => submitRating(requestId, user.uid, stars, tags));
       setCompletion(previous => ({ ...previous, rated: true }));
       setSuccess(true);
     } catch (cause) {

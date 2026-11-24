@@ -337,10 +337,6 @@ export default function ManageListings() {
                   </p>
                 )}
 
-                {item.description && (
-                  <p>{item.description}</p>
-                )}
-
                 {type === 'sell' &&
                   item.price != null && (
                     <p>

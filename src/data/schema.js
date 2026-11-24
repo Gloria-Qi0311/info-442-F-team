@@ -39,6 +39,7 @@ export const TRANSACTION_STAGE = {
   pickup: 'Pickup',
   return: 'Return',
   received: 'Received',
+  rate: 'Rate',
 };
 
 export const PHOTO_KINDS = { pickup: 'pickup', return: 'return' };
