@@ -1,14 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../auth/AuthContext';
 import { useCurrentUser } from '../data/currentUser';
+import { db } from '../firebase';
+import { COLLECTIONS } from '../data/schema';
 
 export default function Account() {
   const user = useCurrentUser();
-  const { signOutUser } = useAuth();
+  const { user: authUser, signOutUser } = useAuth();
   const navigate = useNavigate();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState('');
+  const [totalPoints, setTotalPoints] = useState(null);
+
+  // #22 / P4: show the user's current total points, updated live.
+  useEffect(() => {
+    if (!authUser) return undefined;
+    return onSnapshot(
+      doc(db, COLLECTIONS.users, authUser.uid),
+      (snap) => setTotalPoints(snap.exists() ? Number(snap.data().totalPoints) || 0 : 0),
+      () => setTotalPoints(null),
+    );
+  }, [authUser]);
 
   async function handleSignOut() {
   if (isSigningOut) return;
@@ -35,6 +49,8 @@ export default function Account() {
         <dd>{user.name}</dd>
         <dt>UW email</dt>
         <dd>{user.uwEmail}</dd>
+        <dt>Total points</dt>
+        <dd>{totalPoints === null ? 'Loading...' : totalPoints}</dd>
       </dl>
       <button
         type="button"
