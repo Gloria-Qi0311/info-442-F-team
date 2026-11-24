@@ -88,12 +88,25 @@ export default function OngoingBorrowing() {
   const expected = action === PHOTO_KINDS.pickup ? TRANSACTION_STAGE.approved
     : isOwner ? TRANSACTION_STAGE.return : TRANSACTION_STAGE.pickup;
 
+  // G4.10 / S6.8 / L6.6 / B6.6 / L7.6 / B7.5: an offline save never finishes,
+  // so fail right away when offline and stop waiting after 15 seconds.
+  function saveWithTimeout(save) {
+    if (!navigator.onLine) return Promise.reject(new Error('You are offline.'));
+    const saving = save();
+    saving.catch(() => {});
+    let timer;
+    const timedOut = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Saving timed out. Refresh the page before trying again.')), 15000);
+    });
+    return Promise.race([saving, timedOut]).finally(() => clearTimeout(timer));
+  }
+
   async function confirm() {
     setBusy(true);
     setError('');
     setRetryHint('');
     try {
-      await confirmExchange(requestId, user.uid, action, photo);
+      await saveWithTimeout(() => confirmExchange(requestId, user.uid, action, photo));
       navigate(action === 'return' && isOwner ? `${base}/complete` : base, { replace: true });
     } catch (cause) {
       const step = action === PHOTO_KINDS.pickup ? 'Pickup' : 'Return';
@@ -110,7 +123,7 @@ export default function OngoingBorrowing() {
     setBusy(true);
     setError('');
     try {
-      await confirmSellGivePickup(requestId, user.uid);
+      await saveWithTimeout(() => confirmSellGivePickup(requestId, user.uid));
       if (type === LISTING_TYPES.give) {
         navigate(`${base}/complete`, { replace: true });
       } else {

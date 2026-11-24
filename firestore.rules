@@ -149,6 +149,23 @@ service cloud.firestore {
                     'pickupDate', 'pickupTime', 'pickupLocation', 'viewedByOwner']);
       }
 
+      // #16: borrow requests need the same fields and dates the Borrow form checks.
+      // A start date counts as today until Seattle midnight (+8h, as in LS9).
+      function validBorrowDetails(data) {
+        let listing = get(/databases/$(database)/documents/listings/$(data.listingId)).data;
+        return data.listingType != 'lend' || (
+          data.startDate is string && data.startDate.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+          && data.endDate is string && data.endDate.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+          && timestamp.date(int(data.endDate.split('-')[0]), int(data.endDate.split('-')[1]), int(data.endDate.split('-')[2]))
+            >= timestamp.date(int(data.startDate.split('-')[0]), int(data.startDate.split('-')[1]), int(data.startDate.split('-')[2]))
+          && timestamp.date(int(data.startDate.split('-')[0]), int(data.startDate.split('-')[1]), int(data.startDate.split('-')[2]))
+            + duration.value(1, 'd') + duration.value(8, 'h') > request.time
+          && data.pickupPreference is string && data.pickupPreference.trim().size() > 0
+          && data.purpose is string && data.purpose.trim().size() > 0
+          && (!(listing.get('availableFrom', null) is string) || data.startDate >= listing.availableFrom)
+          && (!(listing.get('availableUntil', null) is string) || data.endDate <= listing.availableUntil));
+      }
+
       // Requesters must be able to check their deterministic request ID before
       // the first request exists. Keep collection queries restricted to members.
       allow get: if isUwUser()
@@ -162,6 +179,7 @@ service cloud.firestore {
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.ownerId != request.auth.uid
         && request.resource.data.status == 'Pending'
+        && validBorrowDetails(request.resource.data)
         && id == request.resource.data.listingId + '_' + request.auth.uid
         && exists(/databases/$(database)/documents/listings/$(request.resource.data.listingId))
         && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.ownerId
@@ -187,6 +205,7 @@ service cloud.firestore {
         (isRequester()
           && resource.data.status == 'Canceled'
           && request.resource.data.status == 'Pending'
+          && validBorrowDetails(request.resource.data)
           && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion
