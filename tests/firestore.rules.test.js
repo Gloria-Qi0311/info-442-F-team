@@ -586,3 +586,61 @@ test('giveaway rating rejects invalid stars, tags and other users', async () => 
     await assertFails(batch.commit());
   }
 });
+
+
+test('lending return completes when neither participant has a profile', async () => {
+  const requestId = 'item-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await updateDoc(doc(db, 'listings/item-1'), {
+      status: 'On Loan', approvedRequestId: requestId,
+    });
+    await setDoc(doc(db, 'requests/' + requestId), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Return',
+    });
+    await setDoc(doc(db, 'confirmationPhotos/' + requestId + '_return_requester-1'), {
+      requestId, userId: 'requester-1', kind: 'return',
+      photoUrl: 'data:image/jpeg;base64,AAAA', createdAt: new Date(),
+    });
+  });
+  const owner = uwContext('owner-1');
+  const receiving = writeBatch(owner);
+  receiving.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), {
+    requestId, userId: 'owner-1', kind: 'return',
+    photoUrl: 'data:image/jpeg;base64,AAAA', createdAt: new Date(),
+  });
+  receiving.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
+  receiving.update(doc(owner, 'listings/item-1'), { status: 'Active', approvedRequestId: null });
+  for (const [uid, points] of [['owner-1', 10], ['requester-1', 5]]) {
+    receiving.set(doc(owner, 'users/' + uid), { totalPoints: points, lastPointsRequestId: requestId });
+    receiving.set(doc(owner, 'pointsRecords/' + requestId + '_' + uid), {
+      requestId, userId: uid, points,
+      reason: 'Completed borrowing transaction', createdAt: new Date(),
+    });
+  }
+  await assertSucceeds(receiving.commit());
+  const borrower = await getDoc(doc(owner, 'users/requester-1'));
+  if (borrower.data().totalPoints !== 5) throw new Error('Borrower points missing.');
+});
+
+test('giveaway pickup creates missing giver profile and grants points once', async () => {
+  const requestId = 'give-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/' + requestId), {
+      listingId: 'give-1', listingType: 'give', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
+    });
+  });
+  const giver = uwContext('owner-1');
+  const pickup = writeBatch(giver);
+  pickup.update(doc(giver, 'requests/' + requestId), { stage: 'Pickup' });
+  pickup.set(doc(giver, 'users/owner-1'), { totalPoints: 15, lastPointsRequestId: requestId });
+  pickup.set(doc(giver, 'pointsRecords/' + requestId + '_owner-1'), {
+    requestId, userId: 'owner-1', points: 15,
+    reason: 'Completed giveaway transaction', createdAt: new Date(),
+  });
+  await assertSucceeds(pickup.commit());
+  const user = await getDoc(doc(giver, 'users/owner-1'));
+  if (user.data().totalPoints !== 15) throw new Error('Giveaway points missing.');
+});
