@@ -5,6 +5,7 @@ import { COLLECTIONS, LISTING_TYPES, REQUEST_STATUS, TRANSACTION_STAGE } from '.
 export const FEEDBACK_TAGS = {
   lender: ['On time', 'Polite', 'Gentle use', 'Quickly reply'],
   borrower: ['On time', 'Polite', 'Quickly reply'],
+  giver: ['On time', 'Polite', 'Quickly reply'],
 };
 
 export function ratingId(requestId, uid) {
@@ -17,7 +18,7 @@ export async function getCompletion(requestId, uid) {
   const request = snap.data();
   // Lending finishes at Received. A giveaway finishes at Pickup (G4 → G5).
   const lendDone = request.listingType === LISTING_TYPES.lend && request.stage === TRANSACTION_STAGE.received;
-  const giveDone = request.listingType === LISTING_TYPES.give && request.stage === TRANSACTION_STAGE.pickup;
+  const giveDone = request.listingType === LISTING_TYPES.give && [TRANSACTION_STAGE.pickup, 'Rate'].includes(request.stage);
   if (!(lendDone || giveDone)
     || request.status !== REQUEST_STATUS.approved
     || ![request.ownerId, request.requesterId].includes(uid)) {
@@ -36,25 +37,29 @@ export async function getCompletion(requestId, uid) {
 
 export async function submitRating(requestId, uid, stars, tags) {
   if (!Number.isInteger(stars) || stars < 1 || stars > 5) throw new Error('Please select a star rating.');
+  if (!Array.isArray(tags)) throw new Error('Invalid feedback tags.');
   const ratingRef = doc(db, COLLECTIONS.ratings, ratingId(requestId, uid));
   await runTransaction(db, async tx => {
     const requestRef = doc(db, COLLECTIONS.requests, requestId);
     const [requestSnap, ratingSnap] = await Promise.all([tx.get(requestRef), tx.get(ratingRef)]);
     if (!requestSnap.exists()) throw new Error('Transaction not found.');
     const request = requestSnap.data();
-    if (request.listingType !== LISTING_TYPES.lend || request.status !== REQUEST_STATUS.approved
-      || request.stage !== TRANSACTION_STAGE.received || ![request.ownerId, request.requesterId].includes(uid)) {
+    const lendAllowed = request.listingType === LISTING_TYPES.lend && request.stage === TRANSACTION_STAGE.received;
+    const giveAllowed = request.listingType === LISTING_TYPES.give && request.ownerId === uid && request.stage === TRANSACTION_STAGE.pickup;
+    if ((!lendAllowed && !giveAllowed) || request.status !== REQUEST_STATUS.approved || ![request.ownerId, request.requesterId].includes(uid)) {
       throw new Error('You cannot rate this transaction yet.');
     }
     if (ratingSnap.exists()) throw new Error('You have already rated this transaction.');
-    const role = request.ownerId === uid ? 'lender' : 'borrower';
+    const role = giveAllowed ? 'giver' : request.ownerId === uid ? 'lender' : 'borrower';
     const validTags = FEEDBACK_TAGS[role];
-    const selectedTags = [...new Set(tags)].filter(tag => validTags.includes(tag));
+    if (tags.some(tag => !validTags.includes(tag))) throw new Error('Invalid feedback tags.');
+    const selectedTags = [...new Set(tags)];
     tx.set(ratingRef, {
       requestId, raterId: uid,
       rateeId: role === 'lender' ? request.requesterId : request.ownerId,
       stars, tags: selectedTags, createdAt: serverTimestamp(),
     });
+    if (giveAllowed) tx.update(requestRef, { stage: 'Rate' });
   });
 }
 

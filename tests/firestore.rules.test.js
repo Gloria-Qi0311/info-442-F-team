@@ -508,3 +508,81 @@ test('lender cannot reactivate an On Loan listing before receiving the return', 
     status: 'Active', approvedRequestId: null,
   }));
 });
+
+
+test('giveaway pickup awards exactly 15 points atomically and cannot be repeated', async () => {
+  const requestId = 'give-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/' + requestId), {
+      listingId: 'give-1', listingType: 'give', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
+    });
+    await setDoc(doc(db, 'users/owner-1'), { totalPoints: 4 });
+  });
+  const giver = uwContext('owner-1');
+  const requestRef = doc(giver, 'requests/' + requestId);
+  const userRef = doc(giver, 'users/owner-1');
+  const pointsRef = doc(giver, 'pointsRecords/' + requestId + '_owner-1');
+  await assertFails(updateDoc(requestRef, { stage: 'Pickup' }));
+  const pickup = writeBatch(giver);
+  pickup.update(requestRef, { stage: 'Pickup' });
+  pickup.update(userRef, { totalPoints: 19, lastPointsRequestId: requestId });
+  pickup.set(pointsRef, {
+    requestId, userId: 'owner-1', points: 15,
+    reason: 'Completed giveaway transaction', createdAt: new Date(),
+  });
+  await assertSucceeds(pickup.commit());
+  const balance = await getDoc(userRef);
+  if (balance.data().totalPoints !== 19) throw new Error('Giver did not get 15 points.');
+  await assertFails(updateDoc(userRef, { totalPoints: 34 }));
+  const record = await getDoc(pointsRef);
+  if (record.data().points !== 15) throw new Error('Giveaway points record changed.');
+});
+
+test('giver can rate recipient only once after giveaway pickup and advance to Rate', async () => {
+  const requestId = 'give-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/' + requestId), {
+      listingId: 'give-1', listingType: 'give', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Pickup',
+    });
+  });
+  const giver = uwContext('owner-1');
+  const ratingRef = doc(giver, 'ratings/' + requestId + '_owner-1');
+  const requestRef = doc(giver, 'requests/' + requestId);
+  const rating = {
+    requestId, raterId: 'owner-1', rateeId: 'requester-1',
+    stars: 5, tags: ['Polite'], createdAt: new Date(),
+  };
+  await assertFails(setDoc(ratingRef, rating));
+  const batch = writeBatch(giver);
+  batch.set(ratingRef, rating);
+  batch.update(requestRef, { stage: 'Rate' });
+  await assertSucceeds(batch.commit());
+  await assertFails(setDoc(ratingRef, rating));
+  await assertFails(setDoc(doc(uwContext('requester-1'), 'ratings/' + requestId + '_requester-1'), {
+    ...rating, raterId: 'requester-1', rateeId: 'owner-1',
+  }));
+});
+
+test('giveaway rating rejects invalid stars, tags and other users', async () => {
+  const requestId = 'give-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/' + requestId), {
+      listingId: 'give-1', listingType: 'give', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Pickup',
+    });
+  });
+  for (const [stars, tags] of [[0, []], [6, []], [5, ['Invalid tag']]]) {
+    const giver = uwContext('owner-1');
+    const batch = writeBatch(giver);
+    batch.set(doc(giver, 'ratings/' + requestId + '_owner-1'), {
+      requestId, raterId: 'owner-1', rateeId: 'requester-1',
+      stars, tags, createdAt: new Date(),
+    });
+    batch.update(doc(giver, 'requests/' + requestId), { stage: 'Rate' });
+    await assertFails(batch.commit());
+  }
+});

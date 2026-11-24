@@ -159,7 +159,7 @@ export default function ListingRequests() {
               <div>
                   <strong>{pageText.requester} rating:</strong>{' '}
                   {ratings[request.requesterId]?.average != null
-                    ? `${ratings[request.requesterId].average.toFixed(1)} / 5 stars`
+                    ? `${ratings[request.requesterId].average} / 5 stars`
                     : 'No ratings yet'}
                   <p><strong>Most received tags:</strong>{' '}
                     {ratings[request.requesterId]?.topTags.length

@@ -24,10 +24,10 @@ export async function getRequesterRatingSummary(requesterId) {
       }
     }
   }
-  const highest = Math.max(0, ...tags.values());
+  const topTags = [...tags.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3).map(([tag]) => tag);
   return {
-    average: count ? total / count : null,
+    average: count ? Math.round(total / count) : null,
     count,
-    topTags: [...tags].filter(([, times]) => times === highest).map(([tag]) => tag),
+    topTags,
   };
 }
