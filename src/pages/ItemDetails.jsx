@@ -7,6 +7,7 @@ import { usePickupAreas } from '../data/pickupAreas';
 import { cancelItemRequest, getMyRequest, sendItemRequest } from '../data/requests';
 import { LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
+import { saveWithTimeout } from '../data/saveWithTimeout';
 
 const TYPE_TEXT = {
   [LISTING_TYPES.lend]: { label: 'Borrow', owner: 'Lender', heading: 'Borrowing details' },
@@ -99,10 +100,11 @@ function RequestPanel({ listing, available }) {
     setBusy(true);
     setError('');
     try {
-      setRequest(await cancelItemRequest(request.id, user.uid));
+      const confirmed = await saveWithTimeout(() => cancelItemRequest(request.id, user.uid));
+      setRequest(confirmed);
     } catch (cause) {
       console.error('Could not cancel request:', cause);
-      setError(cause.message || 'Could not cancel your request. Please try again.');
+      setError(`Your request could not be canceled. ${cause.message || 'Check your connection.'} Refresh to confirm its status before retrying.`);
     } finally {
       setBusy(false);
     }
@@ -121,23 +123,6 @@ function RequestPanel({ listing, available }) {
     );
   }
 
-  if (listing.type === LISTING_TYPES.lend) {
-    if (isOwner) {
-      return <section className="item-request"><p>This is your listing.</p><Link to={`/manage/lend/${listing.id}/requests`}>View requests for this item</Link></section>;
-    }
-    if (loading) return <p role="status">Loading your request...</p>;
-    const hasRequest = Boolean(request);
-    return (
-      <section className="item-request">
-        {hasRequest && <p>Your request: {request.status}</p>}
-        {hasRequest && <Link to={`/listings/${listing.id}/borrow/status`}>View my borrowing request</Link>}
-        {available && (!hasRequest || request.status === REQUEST_STATUS.cancelled) && (
-          <Link className="item-request-link" to={`/listings/${listing.id}/borrow`}>Send request!</Link>
-        )}
-        {error && <p role="alert" className="error">{error}</p>}
-      </section>
-    );
-  }
 
   if (loading) {
     return <p role="status">Loading your request...</p>;
