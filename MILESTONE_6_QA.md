@@ -122,7 +122,7 @@ Points and ratings only become reachable at the end of a completed two-party tra
 
 **How NF7 was measured.** `npm run test:rules` with `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080`, against the Firestore emulator: **24 tests, 24 pass, 0 fail, 1059 ms**. The `PERMISSION_DENIED` lines in the output are expected — they come from the suite's own `assertFails` cases. The suite was run with BUG-1's one-line guard applied locally, but that guard changes only the `pointsRecords` *read* rule, and the suite's seven references to `pointsRecords` are all writes, so the result holds for the committed rules as well.
 
-**The rules suite does not run from a clean checkout.** `tests/firestore.rules.test.js` imports `@firebase/rules-unit-testing`, which is not listed in `package.json`. `npm run test:rules` fails with `ERR_MODULE_NOT_FOUND` on any fresh clone, which is why this clause had gone unverified. Installing it also needs a version pin: 5.x and 6.x require `firebase ^12`, and this project is on `firebase ^11.10.0`, so npm refuses them. See BUG-6.
+**The rules suite does not run from a clean checkout.** `tests/firestore.rules.test.js` imports `@firebase/rules-unit-testing`, which is listed in neither `dependencies` nor `devDependencies`. CI works around this — `.github/workflows/lint.yml` installs it with `--no-save` before running the suite under `emulators:exec`, so the suite does run on every pull request. The gap is local only: `npm run test:rules` fails with `ERR_MODULE_NOT_FOUND` for a developer who has just cloned and run `npm install`, which is why this clause had gone unverified here. The version also has to be pinned: 5.x and 6.x require `firebase ^12` and this project is on `firebase ^11.10.0`, so npm refuses them. See BUG-6.
 
 **On NF1 and NF9.** Neither was exercised in this round. The environment held about 40 listings, well short of the 200 the clause names, and the map still loaded quickly (DOMContentLoaded 259 ms, last tile 566 ms) — but that says nothing about the stated condition. NF9 needs a browser offline toggle. Harry Han reports both as passing; those two rows record his result, not an observation of this tester, and are marked as such. `scripts/seed-listings.js` is in the repository if anyone wants to reproduce NF1: `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=info442-husky-share node scripts/seed-listings.js 200`, then time the map in the DevTools Network panel; `... seed-listings.js clean` removes the data afterwards.
 
@@ -149,13 +149,13 @@ Points and ratings only become reachable at the end of a completed two-party tra
 - **Status: FIXED** in PR #69 (`rateeId = role === 'borrower' ? request.ownerId : request.requesterId`), merged as part of `6aa6dbd`.
 - **Retested on `main` @ 6aa6dbd (Nov 24):** a fresh giveaway from listing to rating — "Rating submitted successfully!", stage `Pickup` → `Rate`, stored `rateeId` equals the recipient, 4 stars and the `Polite` tag saved, and the new `ratingSummaries` document correctly read `ratingTotal 13 / ratingCount 3 / overallRating 4`. PASS.
 
-**BUG-6 — The Firestore rules test suite cannot be run from the repository — MEDIUM**
+**BUG-6 — The rules test suite cannot be run locally from a clean checkout — LOW**
 
 - **Where:** `package.json`
-- **Cause:** `tests/firestore.rules.test.js` imports `@firebase/rules-unit-testing`, which appears in neither `dependencies` nor `devDependencies`. `npm run test:rules` therefore fails immediately with `ERR_MODULE_NOT_FOUND` for anyone who has not installed the package by hand.
-- **Impact:** NF7 is unverifiable from a clean checkout, and the suite cannot run in CI.
-- **Severity:** Medium — no user-facing effect, but it hides a security-rules regression suite from the team.
-- **Fix:** add `"@firebase/rules-unit-testing": "^4.0.1"` to `devDependencies`. The version matters: 5.x and 6.x declare a peer dependency on `firebase ^12` and npm refuses to install them alongside this project's `firebase ^11.10.0`.
+- **Cause:** `tests/firestore.rules.test.js` imports `@firebase/rules-unit-testing`, which is in neither `dependencies` nor `devDependencies`. `npm run test:rules` therefore fails with `ERR_MODULE_NOT_FOUND` for anyone who has not installed the package by hand.
+- **Impact:** Local only. CI is unaffected: `lint.yml` installs the package with `--no-save` before running the suite, so the rules tests do run on every pull request. The cost is that a developer who wants to run the suite locally hits an error with no hint of the required version pin.
+- **Severity:** Low — no user-facing effect, and the regression suite is still enforced in CI.
+- **Fix:** add `"@firebase/rules-unit-testing": "^4.0.1"` to `devDependencies` **and regenerate `package-lock.json` in the same commit** — both workflows run `npm ci`, which fails if the two files disagree. The version matters: 5.x and 6.x declare a peer dependency on `firebase ^12`, which npm refuses alongside this project's `firebase ^11.10.0`. Once added, the `--no-save` line in `lint.yml` can be dropped.
 
 **BUG-5 — A user with no tags still gets a tag line (R14)**
 
