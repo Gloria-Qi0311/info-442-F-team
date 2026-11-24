@@ -43,6 +43,29 @@ function displayDate(value) {
   return String(value);
 }
 
+// NF9: a Firestore save never finishes while offline, so fail right away when
+// offline and stop waiting after 15 seconds. Sending and canceling reuse the
+// same request document, so trying again later can't create a duplicate.
+function saveWithTimeout(save) {
+  if (!navigator.onLine) return Promise.reject(new Error('offline'));
+  const saving = save();
+  saving.catch(() => {});
+  let timer;
+  const timedOut = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('timeout')), 15000);
+  });
+  return Promise.race([saving, timedOut]).finally(() => clearTimeout(timer));
+}
+
+// Our own errors (like "This item is no longer available.") are shown as-is.
+// Network and Firebase errors get a clear message instead.
+function friendlyError(cause, fallback) {
+  if (cause.code || !cause.message || cause.message === 'offline' || cause.message === 'timeout') {
+    return fallback;
+  }
+  return cause.message;
+}
+
 // Issue #14: "I want it" for Sell (S5) and Give (G6) listings.
 // The requester can send a request, see its status, and cancel it while it is Pending.
 // The owner sees a link to the requests for their listing instead (S3 / G3).
@@ -82,13 +105,11 @@ function RequestPanel({ listing, available }) {
     setBusy(true);
     setError('');
     try {
-      setRequest(await sendItemRequest(listing.id, user));
+      setRequest(await saveWithTimeout(() => sendItemRequest(listing.id, user)));
     } catch (cause) {
       console.error('Could not send request:', cause);
-      // Firebase errors (such as "Connection failed.") get a clear message instead.
-      setError(cause.code || !cause.message
-        ? 'Your request could not be sent. Check your connection and try again.'
-        : cause.message);
+      setError(friendlyError(cause,
+        'Your request could not be sent. Check your connection and try again.'));
     } finally {
       setBusy(false);
     }
@@ -99,16 +120,15 @@ function RequestPanel({ listing, available }) {
     setBusy(true);
     setError('');
     try {
-      setRequest(await cancelItemRequest(request.id, user.uid));
+      setRequest(await saveWithTimeout(() => cancelItemRequest(request.id, user.uid)));
     } catch (cause) {
       console.error('Could not cancel request:', cause);
-      setError(cause.message || 'Could not cancel your request. Please try again.');
+      setError(friendlyError(cause,
+        'Your request could not be canceled. Check your connection and try again.'));
     } finally {
       setBusy(false);
     }
   }
-
-
 
   if (isOwner) {
     return (
@@ -122,9 +142,6 @@ function RequestPanel({ listing, available }) {
   }
 
   if (listing.type === LISTING_TYPES.lend) {
-    if (isOwner) {
-      return <section className="item-request"><p>This is your listing.</p><Link to={`/manage/lend/${listing.id}/requests`}>View requests for this item</Link></section>;
-    }
     if (loading) return <p role="status">Loading your request...</p>;
     const hasRequest = Boolean(request);
     return (
