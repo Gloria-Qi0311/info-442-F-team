@@ -697,3 +697,20 @@ test('a failed cancellation must not change the pending request in Firestore', a
   const current = await getDoc(doc(requester, 'requests/item-1_requester-1'));
   if (current.data().status !== 'Pending') throw new Error('Failed cancellation changed request status.');
 });
+
+test('giver may check a missing points record before the first pickup', async () => {
+  const giver = uwContext('owner-1');
+  const missing = await assertSucceeds(getDoc(doc(giver, 'pointsRecords/give-1_requester-1_owner-1')));
+  if (missing.exists()) throw new Error('Unexpected points record.');
+});
+
+test('existing points records remain private to their recipient', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'pointsRecords/other-request_owner-1'), {
+      requestId: 'other-request', userId: 'owner-1', points: 15,
+      reason: 'Completed giveaway transaction',
+    });
+  });
+  await assertSucceeds(getDoc(doc(uwContext('owner-1'), 'pointsRecords/other-request_owner-1')));
+  await assertFails(getDoc(doc(uwContext('requester-1'), 'pointsRecords/other-request_owner-1')));
+});
