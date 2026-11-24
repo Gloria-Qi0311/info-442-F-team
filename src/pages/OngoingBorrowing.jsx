@@ -7,6 +7,7 @@ import { db } from '../firebase';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from '../data/schema';
 import { confirmExchange, confirmSellGivePickup, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
 import './ItemDetails.css';
+import { checkPhotoFile } from '../data/photos';
 
 // L5/B5 lending, S6 selling, G4 giving.
 const ROLES = {
@@ -189,8 +190,10 @@ export default function OngoingBorrowing() {
                 <label htmlFor="confirmation-photo">Photo of the item</label>
                 <input id="confirmation-photo" type="file" accept="image/*" onChange={event => {
                   const file = event.target.files?.[0] || null;
-                  setPhoto(file);
-                  setPreview(file ? URL.createObjectURL(file) : '');
+                  const validationError = file ? checkPhotoFile(file) : '';
+                  setError(validationError);
+                  setPhoto(validationError ? null : file);
+                  setPreview(file && !validationError ? URL.createObjectURL(file) : '');
                 }} />
                 {preview && <img src={preview} alt="Confirmation preview" style={{ maxWidth: 240 }} />}
                 <button type="button" disabled={busy} onClick={confirm}>
