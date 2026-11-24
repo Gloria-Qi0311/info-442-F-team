@@ -6,6 +6,8 @@ import {
   assertFails,
 } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { rejects } from 'node:assert/strict';
+import { saveWithTimeout } from '../src/data/saveWithTimeout.js';
 
 const projectId = 'demo-husky-share';
 let testEnv;
@@ -670,4 +672,28 @@ test('giveaway pickup creates missing giver profile and grants points once', asy
   await assertSucceeds(pickup.commit());
   const user = await getDoc(doc(giver, 'users/owner-1'));
   if (user.data().totalPoints !== 15) throw new Error('Giveaway points missing.');
+});
+
+
+test('cancellation save timeout returns a clear error instead of hanging', async () => {
+  await rejects(
+    saveWithTimeout(() => new Promise(() => {}), 5),
+    /Saving timed out/,
+  );
+});
+
+test('a failed cancellation must not change the pending request in Firestore', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Pending',
+    });
+  });
+  const outsider = uwContext('requester-2');
+  await assertFails(updateDoc(doc(outsider, 'requests/item-1_requester-1'), {
+    status: 'Canceled', cancelledAt: new Date(),
+  }));
+  const requester = uwContext('requester-1');
+  const current = await getDoc(doc(requester, 'requests/item-1_requester-1'));
+  if (current.data().status !== 'Pending') throw new Error('Failed cancellation changed request status.');
 });
