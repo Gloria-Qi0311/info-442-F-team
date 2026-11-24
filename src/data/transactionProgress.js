@@ -130,7 +130,6 @@ export async function confirmSellGivePickup(requestId, uid) {
     const giverRef = doc(db, COLLECTIONS.users, request.ownerId);
     const recordRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${request.ownerId}`);
     const giverSnap = request.listingType === LISTING_TYPES.give ? await tx.get(giverRef) : null;
-    const recordSnap = request.listingType === LISTING_TYPES.give ? await tx.get(recordRef) : null;
     let confirmerId = null;
     if (request.listingType === LISTING_TYPES.sell) confirmerId = request.requesterId;
     if (request.listingType === LISTING_TYPES.give) confirmerId = request.ownerId;
@@ -139,7 +138,6 @@ export async function confirmSellGivePickup(requestId, uid) {
       throw new Error('This item has already been picked up.');
     }
     if (request.listingType === LISTING_TYPES.give) {
-      if (recordSnap?.exists()) throw new Error('Giveaway points were already awarded.');
       const giverUpdate = { totalPoints: (Number(giverSnap?.data()?.totalPoints) || 0) + 15, lastPointsRequestId: requestId };
       if (giverSnap.exists()) tx.update(giverRef, giverUpdate);
       else tx.set(giverRef, giverUpdate);
