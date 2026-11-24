@@ -56,7 +56,7 @@ Points and ratings only become reachable at the end of a completed two-party tra
 
 ### Issue 6.2 – Implement Rating Submission (#23)
 
-**Result: PARTIAL PASS – giveaway rating is blocked**
+**Result: PASS – giveaway rating was blocked by BUG-4 during testing; fixed in #69 and retested**
 
 | Test | Requirement | Result |
 |---|---|---|
@@ -71,7 +71,7 @@ Points and ratings only become reachable at the end of a completed two-party tra
 | B8 shows "On time", "Polite", "Quickly reply" | B8.4 | PASS |
 | G5 shows "On time", "Polite", "Quickly reply" | G5.4 | PASS |
 | L8 / B8 / G5 show the rating form for the correct counterpart | L8.3, B8.3, G5.3 | PASS |
-| **Submitting a giveaway rating changes the status to "Rate"** | **G5.5** | **FAIL – blocked, see BUG-4** |
+| **Submitting a giveaway rating changes the status to "Rate"** | **G5.5** | **PASS – after the BUG-4 fix in #69; retested on `main` @ 6aa6dbd** |
 | A failed save shows an error message | R11 | PASS – the failure above surfaced an error rather than hanging |
 | A failed save keeps the selected stars and tags | R12 | PASS – stars and tags stayed selected after the failure |
 
@@ -103,11 +103,11 @@ Points and ratings only become reachable at the end of a completed two-party tra
 
 ### Issue 6.4 – Test and Finalize the Application (#25)
 
-**Result: PARTIAL PASS – 6 of 10 nonfunctional requirements verified**
+**Result: PASS – 8 of 10 nonfunctional requirements verified here; NF1 and NF9 reported as passing by Harry Han**
 
 | Test | Requirement | Result |
 |---|---|---|
-| Map loads and shows all markers within 3 s with up to 200 active listings | NF1 | NOT TESTED – see below |
+| Map loads and shows all markers within 3 s with up to 200 active listings | NF1 | PASS – reported by Harry Han; not independently verified here |
 | Search results appear within 1 s | NF2 | **PASS – 11 ms measured** |
 | All pages meet WCAG 2.1 AA colour contrast | NF3 | **PASS – 110 text elements across 9 routes, 0 failures** |
 | Every image and icon button has a text alternative | NF4 | **PASS – 9 routes, 0 failures** |
@@ -115,7 +115,7 @@ Points and ratings only become reachable at the end of a completed two-party tra
 | All traffic is HTTPS | NF6 | **PASS** |
 | Data readable only by signed-in verified `@uw.edu` users | NF7 | **PASS – 24 of 24 rules tests pass** |
 | A user's UW email is never shown to other users | NF8 | **PASS – the only email rendered anywhere is the user's own on My Account** |
-| A failed request saves no partial data | NF9 | NOT TESTED – offline simulation not performed |
+| A failed request saves no partial data | NF9 | PASS – reported by Harry Han; not independently verified here |
 | ESLint passes with zero errors | NF10 | **PASS – 0 errors, 1 pre-existing warning** |
 
 **How NF3 and NF4 were measured.** A third-party audit script could not be loaded into the signed-in session, so I ran a purpose-written check in the page. For NF3 it walks every element holding visible text, resolves the effective background through alpha compositing, and compares the contrast ratio against 4.5:1, or 3:1 for large text. For NF4 it checks that every `img` has a non-empty `alt`, that every button and link resolves to an accessible name, and that every visible form control has a real `<label>` — including the photo input. Routes covered: Map, Post, Post/Lend, Post/Sell, Post/Give, Manage, Manage/Lend, Manage/Sell, Manage/Give, My Account. This is not a Lighthouse, WAVE, or screen-reader run, and the Requirements document names those tools, so a VoiceOver pass is still worth doing.
@@ -124,32 +124,30 @@ Points and ratings only become reachable at the end of a completed two-party tra
 
 **The rules suite does not run from a clean checkout.** `tests/firestore.rules.test.js` imports `@firebase/rules-unit-testing`, which is not listed in `package.json`. `npm run test:rules` fails with `ERR_MODULE_NOT_FOUND` on any fresh clone, which is why this clause had gone unverified. Installing it also needs a version pin: 5.x and 6.x require `firebase ^12`, and this project is on `firebase ^11.10.0`, so npm refuses them. See BUG-6.
 
-**Why NF1 was not tested.** The clause is written for up to 200 active listings; the environment held about 40. The map loaded quickly (DOMContentLoaded 259 ms, last tile 566 ms), but that says nothing about the stated condition. `scripts/seed-listings.js` was added for this: `npm run emulators`, then `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/seed-listings.js 200`, then time the map in the DevTools Network panel. `node scripts/seed-listings.js clean` removes the data afterwards.
+**On NF1 and NF9.** Neither was exercised in this round. The environment held about 40 listings, well short of the 200 the clause names, and the map still loaded quickly (DOMContentLoaded 259 ms, last tile 566 ms) — but that says nothing about the stated condition. NF9 needs a browser offline toggle. Harry Han reports both as passing; those two rows record his result, not an observation of this tester, and are marked as such. `scripts/seed-listings.js` is in the repository if anyone wants to reproduce NF1: `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 GCLOUD_PROJECT=info442-husky-share node scripts/seed-listings.js 200`, then time the map in the DevTools Network panel; `... seed-listings.js clean` removes the data afterwards.
 
 ## 3. Bugs and Follow-Up
 
 ### Bugs Found
 
-**BUG-1 (shared with Milestone 5) — Giveaway pickup fails for every user — BLOCKING**
+**BUG-1 (shared with Milestone 5) — Giveaway pickup fails for every user — BLOCKING — FIXED**
 
-- **Where:** `firestore.rules:345`
-- **Cause:** `allow read: if isUwUser() && resource.data.userId == request.auth.uid;` has no null guard. `confirmSellGivePickup` reads `pointsRecords/{requestId}_{ownerId}` before writing it, to keep P4 idempotent; on a document that does not exist, `resource` is null and the expression throws, so the read is denied and the transaction fails. Verified directly: reading an existing points record succeeds, reading a non-existent one returns `permission-denied`.
-- **Impact on this milestone:** blocks G4.8, G4.9, P3 and all of G5.
-- **Severity:** Blocking, and live in production — the rules deploy on push to `main`.
+- **Where:** `firestore.rules`, the `pointsRecords` read rule
+- **Cause:** the rule had no null guard. `confirmSellGivePickup` reads `pointsRecords/{requestId}_{ownerId}` before writing it, to keep P4 idempotent; on a document that does not exist, `resource` is null and the expression throws, so the read is denied and the transaction fails.
+- **Impact while open:** blocked G4.8, G4.9, P3 and all of G5, on local and in production.
 - **Assigned Issue:** #54 / #16 (Ling Wang)
-- **Fix:** `allow read: if isUwUser() && (resource == null || resource.data.userId == request.auth.uid);` — the same guard already used for `confirmationPhotos` on line 296. Applied locally during testing so the rest of the flow could be exercised; **not committed**.
+- **Status: FIXED** in PR #69, merged as part of `6aa6dbd`. The committed fix also requires the document id to end with the caller's own uid, so the rule cannot be used to probe for another user's points record.
+- **Retested on `main` @ 6aa6dbd (Nov 24):** pickup confirmed, stage `Approved` → `Pickup`, giver's points 25 → 40. PASS.
 
-**BUG-4 — Giveaway rating cannot be submitted (G5.5) — BLOCKING**
+**BUG-4 — Giveaway rating cannot be submitted (G5.5) — BLOCKING — FIXED**
 
 - **Where:** `src/data/completion.js`, `submitRating`
-- **Steps:** With BUG-1 patched, complete a giveaway pickup, reach the Points & Rating page, select stars and a tag, press Submit.
-- **Expected:** The rating saves and the transaction status changes to "Rate".
-- **Actual:** `evaluation error at L319:24 for 'create' @ L319 … evaluation error at L198:24 for 'update' @ L198` — both writes in the transaction are refused.
-- **Cause:** `submitRating` builds the rating document with `rateeId: role === 'lender' ? request.requesterId : request.ownerId`. On the giveaway path the rater is the giver, whose `uid` *is* `request.ownerId`, so `rateeId` is set to the rater instead of the recipient. The rules require an owner's rating to name the requester as ratee (`ownerId == request.auth.uid && requesterId == rateeId`, lines 338-339), so the create is refused, and the paired request update to "Rate" fails with it. The lending and purchase paths are unaffected because `role === 'lender'` takes the correct branch.
-- **This is not a rules defect.** The rules suite contains a test (`giver can rate recipient only once after giveaway pickup and advance to Rate`) that commits exactly this pair of writes — a `ratings` create plus a request update to "Rate" — and it passes. The `getAfter` on line 335 and the `existsAfter` on line 243 therefore resolve correctly together; the suite's payload differs from the application's only in naming the recipient as `rateeId`. No security condition needs to be removed.
-- **Severity:** Blocking for the giveaway flow, and live in production.
+- **Cause:** the rating document was built with `rateeId: role === 'lender' ? request.requesterId : request.ownerId`. On the giveaway path the rater is the giver, whose uid *is* `request.ownerId`, so `rateeId` named the rater instead of the recipient. The rules require an owner's rating to name the requester as ratee, so the create was refused and the paired request update to "Rate" failed with it. Lending and purchase were unaffected because `role === 'lender'` took the correct branch.
+- **This was not a rules defect.** The rules suite already contained a test (`giver can rate recipient only once after giveaway pickup and advance to Rate`) that commits exactly this pair of writes, and it passes. The `getAfter` on the ratings rule and the `existsAfter` on the requests rule resolve correctly together; only the application's payload was wrong. An earlier draft of this report attributed the failure to a circular dependency between those two rules and recommended removing one of them. That diagnosis was wrong and no security condition needed to change.
+- **Impact while open:** blocked G5.5 and the whole giveaway rating flow, on local and in production.
 - **Assigned Issue:** #59 / #24 (Ling Wang)
-- **Fix:** `rateeId: role === 'borrower' ? request.ownerId : request.requesterId` — one line. **Not applied during testing;** the diagnosis follows from the rules suite and the source, and should be confirmed by re-running the giveaway rating once the change is made.
+- **Status: FIXED** in PR #69 (`rateeId = role === 'borrower' ? request.ownerId : request.requesterId`), merged as part of `6aa6dbd`.
+- **Retested on `main` @ 6aa6dbd (Nov 24):** a fresh giveaway from listing to rating — "Rating submitted successfully!", stage `Pickup` → `Rate`, stored `rateeId` equals the recipient, 4 stars and the `Polite` tag saved, and the new `ratingSummaries` document correctly read `ratingTotal 13 / ratingCount 3 / overallRating 4`. PASS.
 
 **BUG-6 — The Firestore rules test suite cannot be run from the repository — MEDIUM**
 
@@ -187,21 +185,22 @@ Points and ratings only become reachable at the end of a completed two-party tra
 ## 4. Additional Observations
 
 - Points and ratings are consistently written inside Firestore transactions, and the rules verify the resulting state rather than trusting the client. The idempotency key on `pointsRecords` means P4 holds even if a request is replayed — confirmed by reloading both points pages.
-- The two blocking defects are both in the security rules rather than in the application code, and both only affect the giveaway path. The application logic behind them appears correct; it is the rules that refuse the writes.
+- Both blocking defects were fixed in PR #69 while this report was being written, and both were retested against `main` rather than against a local patch.
+- PR #69 also introduced `ratingSummaries` with a migration guard: if a user has existing ratings but no summary document, `submitRating` refuses with "Existing ratings need to be migrated before a new rating can be saved." Any environment carrying older rating data — including a local emulator used for a demo — must run `scripts/backfill-rating-summaries.js --apply` first. Production is covered by the migration gate added to `deploy.yml`.
 - All four Issues in this milestone (#22, #23, #24, #25) are still open on GitHub even though their code is merged into `main`, so the milestone reads as 0% complete on the Milestones page.
 - The two display findings from the Milestone 4 report (M4-01 whole-star rounding, M4-02 three-tag cap) are now confirmed fixed in the browser; that report can be updated.
 - M4-04 (should the unviewed-request count include cancelled-but-unviewed requests?) and M4-06 (a direct SDK write could approve one request without declining the others) remain open. On M4-06: the ordinary application path is correct — approving one of two pending requests on the same listing correctly declined the other, verified with three accounts (LS4). The remaining gap is only reachable by bypassing the app, and a single-document rule cannot assert a condition across a set of other documents, so closing it properly would need a Cloud Function. Worth recording as a known limitation rather than an open bug.
 
 ## 5. Overall Assessment
 
-**Lending and buying are complete and correct end to end. Giving is blocked by two security rule defects, both live in production.**
+**All three flows — lending, buying and giving — are complete and correct end to end on `main` @ 6aa6dbd.** Giving was blocked by two defects during testing (BUG-1 and BUG-4); both were fixed in PR #69 and retested.
 
 | Issue | Result |
 |---|---|
 | #22 – Implement the Points System | PASS – P1, P2, P3, P4, P5 and H13 all verified |
-| #23 – Implement Rating Submission | PARTIAL PASS – lending and purchase ratings pass; G5.5 blocked by BUG-4 |
+| #23 – Implement Rating Submission | PASS – lending and purchase ratings verified; G5.5 verified after the BUG-4 fix in #69 |
 | #24 – Display User Ratings and Feedback | PASS – R8 and R13 confirmed fixed; R14 wording to confirm |
-| #25 – Test and Finalize the Application | PARTIAL PASS – 7 of 10 NFRs verified; NF1 and NF9 outstanding |
+| #25 – Test and Finalize the Application | PASS – 8 of 10 NFRs verified here; NF1 and NF9 reported as passing by Harry Han |
 
 Before closing these Issues, the team should:
 

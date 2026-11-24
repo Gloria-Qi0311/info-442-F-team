@@ -115,15 +115,15 @@ All results below come from **manual browser testing** unless marked otherwise.
 
 ### Issue 5.4 – Complete Selling and Giveaway Pickups (#21)
 
-**Result: PARTIAL PASS – giveaway pickup is blocked by a security rule**
+**Result: PASS – giveaway pickup was blocked by a security rule (BUG-1) during testing; fixed in #69 and retested**
 
 | Test | Requirement | Result |
 |---|---|---|
 | Buyer marks pickup → status becomes "Pickup", "The sale is complete." | S6.7 | PASS |
 | Only the buyer can confirm a purchase pickup | S6.7 | PASS |
-| **Giver marks pickup → status becomes "Pickup"** | **G4.8** | **FAIL – blocked, see BUG-1** |
-| Reaching "Pickup" on a giveaway opens the Points & Rating page | G4.9 | PASS *(only after the rule was patched locally)* |
-| Giveaway points are not awarded twice on reload | P4 | PASS *(after patch)* |
+| **Giver marks pickup → status becomes "Pickup"** | **G4.8** | **PASS – after the BUG-1 fix in #69; retested on `main` @ 6aa6dbd** |
+| Reaching "Pickup" on a giveaway opens the Points & Rating page | G4.9 | PASS |
+| Giveaway points are not awarded twice on reload | P4 | PASS |
 | A failed confirmation leaves the status "Approved" | S6.9, G4.11 | PASS |
 | A failed confirmation shows an error naming the step | S6.8, G4.10 | PASS |
 
@@ -136,7 +136,7 @@ All results below come from **manual browser testing** unless marked otherwise.
 
 ### Bugs Found
 
-**BUG-1 — Giveaway pickup fails for every user (G4.8) — BLOCKING**
+**BUG-1 — Giveaway pickup fails for every user (G4.8) — BLOCKING — FIXED**
 
 - **Where:** `firestore.rules:345`
 - **Steps:** Sign in as the giver → approve a giveaway request → open the Ongoing Giveaway page → "Mark as Picked Up" → "Confirm Pickup".
@@ -145,9 +145,13 @@ All results below come from **manual browser testing** unless marked otherwise.
 - **Cause:** The `pointsRecords` read rule is `allow read: if isUwUser() && resource.data.userId == request.auth.uid;`. `confirmSellGivePickup` reads `pointsRecords/{requestId}_{ownerId}` **before** writing it, to keep points idempotent (P4). On a document that does not exist yet, `resource` is null and `resource.data.userId` throws, so the read is denied and the whole transaction fails. Confirmed directly: reading an existing points record succeeds, reading a non-existent one returns `permission-denied`. Lending is unaffected because `confirmExchange` never reads that collection.
 - **Severity:** Blocking. It stops G4.8, G4.9, P3 and the whole of G5, and the same rules are deployed to production by the push-to-main workflow, so the live site has the same fault.
 - **Assigned Issue:** #54 / #16 (Ling Wang)
-- **Fix:** one line, matching the guard already used for `confirmationPhotos` on line 296:
-  `allow read: if isUwUser() && (resource == null || resource.data.userId == request.auth.uid);`
-  Applied locally during testing so the rest of the flow could be exercised; **not committed**.
+- **Status: FIXED** in PR #69, merged to `main` as part of `6aa6dbd`. The committed fix is tighter than the one used locally during testing — rather than allowing any null read, it requires the document id to end with the caller's own uid, so the rule cannot be used to probe whether another user's points record exists:
+  ```
+  allow read: if isUwUser()
+    && ((resource == null && id.matches('.*_' + request.auth.uid))
+      || (resource != null && resource.data.userId == request.auth.uid));
+  ```
+- **Retested on `main` @ 6aa6dbd (Nov 24):** giver confirms pickup → stage `Approved` → `Pickup`, giver's total points 25 → 40. PASS.
 
 **BUG-2 — The Ongoing Giveaway page never shows the recipient's name (G4.4)**
 
@@ -177,9 +181,8 @@ All results below come from **manual browser testing** unless marked otherwise.
 
 | Priority | Item | Follow-up |
 |---|---|---|
-| High | Re-run the giveaway flow after BUG-1 is merged | Confirms G4.8 against committed code rather than a local patch |
-| Medium | NF9 – offline confirmation | DevTools → Network → Offline during a pickup confirmation; verify the error appears and the stage does not move |
-| Medium | Firestore rules suite | `npm run emulators`, then `npm run test:rules` |
+| — | NF9 – offline confirmation | Reported as passing by Harry Han; not independently verified in this report |
+| — | Firestore rules suite | Done: 24/24 pass. See the Milestone 6 report |
 | Low | PH2 consistency on the confirmation photo input | Decide whether to validate on selection |
 
 ## 4. Additional Observations
@@ -191,20 +194,19 @@ All results below come from **manual browser testing** unless marked otherwise.
 
 ## 5. Overall Assessment
 
-**Milestone 5 works end to end for borrowing and buying. Giving is blocked by a one-line security rule defect.**
+**Milestone 5 works end to end for borrowing, buying and giving.** Giving was blocked by a one-line security rule defect (BUG-1) during testing; that fix landed in PR #69 and the flow has been retested against `main`.
 
 | Issue | Result |
 |---|---|
 | #18 – Build Ongoing Transaction Pages | PARTIAL PASS – G4.4 (recipient name) not implemented |
 | #19 – Borrowing Pickup Confirmation | PASS – two-sided rule verified with two accounts |
 | #20 – Borrowing Return Confirmation | PASS – LS6 and the points award verified |
-| #21 – Selling and Giveaway Pickups | PARTIAL PASS – selling passes; giveaway blocked by BUG-1 |
+| #21 – Selling and Giveaway Pickups | PASS – selling verified; giveaway verified after the BUG-1 fix in #69 |
 
 Before closing these Issues, the team should:
 
-1. Fix BUG-1 and redeploy the rules — this also unblocks Milestone 6's giveaway path and is currently broken in production.
+1. ~~Fix BUG-1~~ — done in PR #69 and retested.
 2. Add the recipient's name to the Ongoing Giveaway page (G4.4).
 3. Stop showing raw rules errors in the interface (BUG-3).
-4. Retest the giveaway flow against committed code.
 
 **Related GitHub Issues:** #18, #19, #20, #21
