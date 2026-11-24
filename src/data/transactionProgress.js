@@ -1,6 +1,6 @@
 import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
-import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db } from '../firebase';
+import { uploadListingPhoto } from './photos';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from './schema';
 
 export const STAGES = [
@@ -43,14 +43,13 @@ export async function confirmExchange(requestId, uid, kind, photo) {
   if ((current.stage || TRANSACTION_STAGE.approved) !== expectedStage) {
     throw new Error('This confirmation is not available at the current stage.');
   }
-  const photoRef = ref(storage, `confirmationPhotos/${uid}/${requestId}/${kind}/${Date.now()}-${photo.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
-  await uploadBytes(photoRef, photo, { contentType: photo.type });
+  // Store a compressed confirmation image in Firestore, as listing photos do.
+  // This works on Firebase Spark without a Storage billing requirement.
   let photoUrl;
   try {
-    photoUrl = await getDownloadURL(photoRef);
-  } catch (cause) {
-    await deleteObject(photoRef).catch(() => {});
-    throw cause;
+    photoUrl = await uploadListingPhoto(photo);
+  } catch {
+    throw new Error('Photo could not be processed. Please try another image.');
   }
   const requestRef = doc(db, COLLECTIONS.requests, requestId);
   const myRef = doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, kind, uid));
@@ -81,9 +80,6 @@ export async function confirmExchange(requestId, uid, kind, photo) {
            listingSnap.data().status !== 'On Loan' || listingSnap.data().approvedRequestId !== requestId)) {
         throw new Error('The listing is not ready to become available again.');
       }
-      if (isReceivingReturn && (!ownerUserSnap?.exists() || !borrowerUserSnap?.exists())) {
-        throw new Error('Both participant profiles are required to award completion points.');
-      }
 
       tx.set(myRef, { requestId, userId: uid, kind, photoUrl, createdAt: serverTimestamp() });
       if (kind === PHOTO_KINDS.pickup && theirs.exists()) {
@@ -95,8 +91,8 @@ export async function confirmExchange(requestId, uid, kind, photo) {
       if (isReceivingReturn) {
         // LS6 + P1/P2: receiving, reactivating, and awarding both users' points
         // are one atomic Firestore transaction. This works on the Spark plan.
-        const ownerPoints = Number(ownerUserSnap.data().totalPoints) || 0;
-        const borrowerPoints = Number(borrowerUserSnap.data().totalPoints) || 0;
+        const ownerPoints = Number(ownerUserSnap?.data()?.totalPoints) || 0;
+        const borrowerPoints = Number(borrowerUserSnap?.data()?.totalPoints) || 0;
         const ownerUserRef = doc(db, COLLECTIONS.users, request.ownerId);
         const borrowerUserRef = doc(db, COLLECTIONS.users, request.requesterId);
         const ownerPointsRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${request.ownerId}`);
@@ -104,8 +100,12 @@ export async function confirmExchange(requestId, uid, kind, photo) {
 
         tx.update(requestRef, { stage: TRANSACTION_STAGE.received });
         tx.update(listingRef, { status: 'Active', approvedRequestId: null });
-        tx.update(ownerUserRef, { totalPoints: ownerPoints + 10, lastPointsRequestId: requestId });
-        tx.update(borrowerUserRef, { totalPoints: borrowerPoints + 5, lastPointsRequestId: requestId });
+        const ownerUpdate = { totalPoints: ownerPoints + 10, lastPointsRequestId: requestId };
+        const borrowerUpdate = { totalPoints: borrowerPoints + 5, lastPointsRequestId: requestId };
+        if (ownerUserSnap.exists()) tx.update(ownerUserRef, ownerUpdate);
+        else tx.set(ownerUserRef, ownerUpdate);
+        if (borrowerUserSnap.exists()) tx.update(borrowerUserRef, borrowerUpdate);
+        else tx.set(borrowerUserRef, borrowerUpdate);
         tx.set(ownerPointsRef, {
           requestId, userId: request.ownerId, points: 10,
           reason: 'Completed borrowing transaction', createdAt: serverTimestamp(),
@@ -117,8 +117,6 @@ export async function confirmExchange(requestId, uid, kind, photo) {
       }
     });
   } catch (cause) {
-    // A failed Firestore confirmation must not leave an unused upload behind.
-    await deleteObject(photoRef).catch(() => {});
     throw cause;
   }
   return photoUrl;
@@ -145,9 +143,10 @@ export async function confirmSellGivePickup(requestId, uid) {
       throw new Error('This item has already been picked up.');
     }
     if (request.listingType === LISTING_TYPES.give) {
-      if (!giverSnap?.exists()) throw new Error('Giver profile is missing.');
       if (recordSnap?.exists()) throw new Error('Giveaway points were already awarded.');
-      tx.update(giverRef, { totalPoints: (Number(giverSnap.data().totalPoints) || 0) + 15, lastPointsRequestId: requestId });
+      const giverUpdate = { totalPoints: (Number(giverSnap?.data()?.totalPoints) || 0) + 15, lastPointsRequestId: requestId };
+      if (giverSnap.exists()) tx.update(giverRef, giverUpdate);
+      else tx.set(giverRef, giverUpdate);
       tx.set(recordRef, { requestId, userId: request.ownerId, points: 15,
         reason: 'Completed giveaway transaction', createdAt: serverTimestamp() });
     }

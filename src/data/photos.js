@@ -42,6 +42,7 @@ function loadImage(file) {
 
 // Returns the compressed photo as a data URL to store in photoUrl.
 export async function uploadListingPhoto(file) {
+  if (!file || checkPhotoFile(file)) throw new Error('Please choose a valid image smaller than 10 MB.');
   const img = await loadImage(file);
   const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
   const canvas = document.createElement('canvas');
