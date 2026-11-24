@@ -1,3 +1,4 @@
+import { saveWithTimeout } from '../data/saveWithTimeout';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -90,16 +91,6 @@ export default function OngoingBorrowing() {
 
   // G4.10 / S6.8 / L6.6 / B6.6 / L7.6 / B7.5: an offline save never finishes,
   // so fail right away when offline and stop waiting after 15 seconds.
-  function saveWithTimeout(save) {
-    if (!navigator.onLine) return Promise.reject(new Error('You are offline.'));
-    const saving = save();
-    saving.catch(() => {});
-    let timer;
-    const timedOut = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('Saving timed out. Refresh the page before trying again.')), 15000);
-    });
-    return Promise.race([saving, timedOut]).finally(() => clearTimeout(timer));
-  }
 
   async function confirm() {
     setBusy(true);
