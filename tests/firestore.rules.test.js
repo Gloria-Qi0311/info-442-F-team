@@ -55,8 +55,8 @@ test('verified UW requester can create their own pending request', async () => {
     ownerId: 'owner-1',
     requesterId: 'requester-1',
     status: 'Pending',
-    startDate: '2026-11-20',
-    endDate: '2026-11-22',
+    startDate: '2026-12-20',
+    endDate: '2026-12-22',
     pickupPreference: 'After class',
     purpose: 'Course project',
     listingTitle: 'Test item',
@@ -455,8 +455,35 @@ test('canceled requests can be re-submitted only with an atomic listing version 
   batch.update(doc(requester, 'listings/item-1'), { requestVersion: 1 });
   batch.update(doc(requester, 'requests/item-1_requester-1'), {
     status: 'Pending', cancelledAt: null, createdAt: new Date(),
+    startDate: '2026-12-20', endDate: '2026-12-22',
+    pickupPreference: 'After class', purpose: 'Course project',
   });
   await assertSucceeds(batch.commit());
+});
+
+test('borrow requests reject blank fields and invalid dates', async () => {
+  const db = uwContext('requester-1');
+  const valid = {
+    listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+    requesterId: 'requester-1', status: 'Pending',
+    startDate: '2026-12-20', endDate: '2026-12-22',
+    pickupPreference: 'After class', purpose: 'Course project',
+  };
+  const invalid = [
+    { purpose: '   ' },
+    { pickupPreference: '' },
+    { startDate: '2026-12-22', endDate: '2026-12-20' },
+    { startDate: '2026-11-01' },
+    { endDate: '2026-02-30' },
+    { endDate: '2027-01-05' },
+    { startDate: 'tomorrow' },
+  ];
+  for (const change of invalid) {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'listings/item-1'), { requestVersion: 1 });
+    batch.set(doc(db, 'requests/item-1_requester-1'), { ...valid, ...change });
+    await assertFails(batch.commit());
+  }
 });
 
 test('only transaction participants can read stored confirmation photos', async () => {

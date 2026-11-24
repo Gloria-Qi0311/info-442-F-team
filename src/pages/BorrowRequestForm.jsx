@@ -50,7 +50,10 @@ export default function BorrowRequestForm() {
       await sendBorrowRequest(listingId, user, values);
       navigate(`/listings/${listingId}/borrow/status`, { replace: true });
     } catch (cause) {
-      setError(cause.message || 'Could not send request. Please try again.');
+      // Firebase errors (such as "Connection failed.") get a clear message instead.
+      setError(cause.code || !cause.message
+        ? 'Your request could not be sent. Check your connection and try again.'
+        : cause.message);
     } finally {
       setBusy(false);
     }

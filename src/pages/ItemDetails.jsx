@@ -85,7 +85,10 @@ function RequestPanel({ listing, available }) {
       setRequest(await sendItemRequest(listing.id, user));
     } catch (cause) {
       console.error('Could not send request:', cause);
-      setError(cause.message || 'Could not send your request. Please try again.');
+      // Firebase errors (such as "Connection failed.") get a clear message instead.
+      setError(cause.code || !cause.message
+        ? 'Your request could not be sent. Check your connection and try again.'
+        : cause.message);
     } finally {
       setBusy(false);
     }
