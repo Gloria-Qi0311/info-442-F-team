@@ -56,7 +56,8 @@ export async function submitRating(requestId, uid, stars, tags) {
     const selectedTags = [...new Set(tags)];
     tx.set(ratingRef, {
       requestId, raterId: uid,
-      rateeId: role === 'lender' ? request.requesterId : request.ownerId,
+      // The owner (lender or giver) rates the requester; the borrower rates the owner.
+      rateeId: role === 'borrower' ? request.ownerId : request.requesterId,
       stars, tags: selectedTags, createdAt: serverTimestamp(),
     });
     if (giveAllowed) tx.update(requestRef, { stage: TRANSACTION_STAGE.rate });

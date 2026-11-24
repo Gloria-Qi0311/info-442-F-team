@@ -342,7 +342,12 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     match /pointsRecords/{id} {
-      allow read: if isUwUser() && resource.data.userId == request.auth.uid;
+      // A user may read their own record, and may also check that their own
+      // record does not exist yet (the giveaway pickup and the completion page
+      // read requestId_<uid> before it is created).
+      allow read: if isUwUser()
+        && ((resource == null && id.matches('.*_' + request.auth.uid))
+          || (resource != null && resource.data.userId == request.auth.uid));
       allow create: if isUwUser()
         && request.resource.data.keys().hasOnly(['requestId', 'userId', 'points', 'reason', 'createdAt'])
         && id == request.resource.data.requestId + '_' + request.resource.data.userId

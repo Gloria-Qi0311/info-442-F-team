@@ -671,3 +671,22 @@ test('giveaway pickup creates missing giver profile and grants points once', asy
   const user = await getDoc(doc(giver, 'users/owner-1'));
   if (user.data().totalPoints !== 15) throw new Error('Giveaway points missing.');
 });
+
+// Sprint 2 QA (#21/#22): the giveaway pickup transaction reads the giver's
+// points record before it exists. That read must be allowed, or Firestore
+// rejects the whole pickup.
+test('users can check their own missing points record but not others', async () => {
+  const requestId = 'item-1_requester-1';
+  const giver = uwContext('owner-1');
+  await assertSucceeds(getDoc(doc(giver, 'pointsRecords/' + requestId + '_owner-1')));
+  await assertFails(getDoc(doc(giver, 'pointsRecords/' + requestId + '_requester-1')));
+
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'pointsRecords/' + requestId + '_requester-1'), {
+      requestId, userId: 'requester-1', points: 5,
+      reason: 'Completed borrowing transaction', createdAt: new Date(),
+    });
+  });
+  await assertFails(getDoc(doc(giver, 'pointsRecords/' + requestId + '_requester-1')));
+  await assertSucceeds(getDoc(doc(uwContext('requester-1'), 'pointsRecords/' + requestId + '_requester-1')));
+});
