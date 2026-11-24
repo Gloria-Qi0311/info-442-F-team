@@ -148,6 +148,7 @@ export default function OngoingBorrowing() {
           <h2>{request.listingTitle || 'Item'}</h2>
           <section className="item-request">
             <h3>Ready for pick up</h3>
+            {type === LISTING_TYPES.give && isOwner && <p><strong>Recipient:</strong> {request.requesterName || 'UW Student'}</p>}
             <p><strong>Pickup day:</strong> {request.pickupDate || 'Not set'}</p>
             <p><strong>Pickup time:</strong> {request.pickupTime || 'Not set'}</p>
             <p><strong>Pickup location:</strong> {request.pickupLocation || 'Not set'}</p>
