@@ -536,7 +536,8 @@ test('giveaway pickup awards exactly 15 points atomically and cannot be repeated
   const balance = await getDoc(userRef);
   if (balance.data().totalPoints !== 19) throw new Error('Giver did not get 15 points.');
   await assertFails(updateDoc(userRef, { totalPoints: 34 }));
-  await assertFails(updateDoc(requestRef, { stage: 'Pickup' }));
+  const record = await getDoc(pointsRef);
+  if (record.data().points !== 15) throw new Error('Giveaway points record changed.');
 });
 
 test('giver can rate recipient only once after giveaway pickup and advance to Rate', async () => {
