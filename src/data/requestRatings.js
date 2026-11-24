@@ -1,4 +1,4 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { COLLECTIONS } from './schema';
 
@@ -6,6 +6,7 @@ import { COLLECTIONS } from './schema';
 export async function getRequesterRatingSummary(requesterId) {
   const snapshot = await getDocs(query(collection(db, COLLECTIONS.ratings),
     where('rateeId', '==', requesterId)));
+  const summary = await getDoc(doc(db, 'ratingSummaries', requesterId));
   let total = 0;
   let count = 0;
   const tags = new Map();
@@ -26,8 +27,8 @@ export async function getRequesterRatingSummary(requesterId) {
   }
   const topTags = [...tags.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3).map(([tag]) => tag);
   return {
-    average: count ? Math.round(total / count) : null,
-    count,
+    average: summary.exists() ? summary.data().overallRating : count ? Math.round(total / count) : null,
+    count: summary.exists() ? summary.data().ratingCount : count,
     topTags,
   };
 }

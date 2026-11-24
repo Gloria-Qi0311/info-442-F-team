@@ -70,12 +70,17 @@ export default function MapPage() {
         if (!cancelled) {
           setListings(result);
         }
-        // Owner points are only used to order search results (P5).
-        return getOwnerPoints(result.map((listing) => listing.ownerId)).then((points) => {
-          if (!cancelled) {
-            setOwnerPoints(points);
-          }
-        });
+        // Owner points are only used to order search results (P5). If they fail
+        // to load, keep showing the map and fall back to the default order.
+        return getOwnerPoints(result.map((listing) => listing.ownerId))
+          .then((points) => {
+            if (!cancelled) {
+              setOwnerPoints(points);
+            }
+          })
+          .catch((err) => {
+            console.error('Could not load owner points for search order:', err);
+          });
       })
       .catch((err) => {
         console.error('Could not load listings for the map:', err);

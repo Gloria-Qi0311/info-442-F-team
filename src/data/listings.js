@@ -10,6 +10,8 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { isPastAvailability } from './availability.js';
+export { isPastAvailability } from './availability.js';
 import { COLLECTIONS, LISTING_STATUS } from './schema.js';
 
 // Pick the ID for a new listing before saving, so retries reuse it (NF9).
@@ -75,16 +77,6 @@ function markInactive(listingId) {
   updateDoc(doc(db, COLLECTIONS.listings, listingId), {
     status: LISTING_STATUS.inactive,
   }).catch((error) => console.error('Could not mark listing inactive:', error));
-}
-
-// Returns true if the listing's availability window has already ended.
-export function isPastAvailability(listing) {
-  if (!listing.availableUntil) {
-    return false;
-  }
-  // availableUntil is saved as "YYYY-MM-DD"; it stays available through that day.
-  const end = new Date(listing.availableUntil + 'T23:59:59');
-  return !Number.isNaN(end.getTime()) && end.getTime() < Date.now();
 }
 
 // Loads the listings that should appear on the map (F2.1–F2.3, LS2–LS3):

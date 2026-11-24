@@ -1,4 +1,4 @@
-import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, where, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_TYPES, REQUEST_STATUS, TRANSACTION_STAGE } from './schema';
 
@@ -54,9 +54,24 @@ export async function submitRating(requestId, uid, stars, tags) {
     const validTags = FEEDBACK_TAGS[role];
     if (tags.some(tag => !validTags.includes(tag))) throw new Error('Invalid feedback tags.');
     const selectedTags = [...new Set(tags)];
+    const rateeId = role === 'borrower' ? request.ownerId : request.requesterId;
+    const summaryRef = doc(db, 'ratingSummaries', rateeId);
+    const summarySnap = await tx.get(summaryRef);
+    if (!summarySnap.exists()) {
+      const legacy = await getDocs(query(collection(db, COLLECTIONS.ratings), where('rateeId', '==', rateeId), limit(1)));
+      if (!legacy.empty) throw new Error('Existing ratings need to be migrated before a new rating can be saved.');
+    }
+    const previous = summarySnap.exists() ? summarySnap.data() : { ratingTotal: 0, ratingCount: 0 };
+    const ratingTotal = previous.ratingTotal + stars;
+    const ratingCount = previous.ratingCount + 1;
+    tx.set(summaryRef, {
+      ratingTotal, ratingCount, overallRating: Math.round(ratingTotal / ratingCount),
+      lastRatingId: ratingRef.id,
+    });
     tx.set(ratingRef, {
       requestId, raterId: uid,
-      rateeId: role === 'lender' || role === 'giver' ? request.requesterId : request.ownerId,
+      // The owner (lender or giver) rates the requester; the borrower rates the owner.
+      rateeId,
       stars, tags: selectedTags, createdAt: serverTimestamp(),
     });
     if (giveAllowed) tx.update(requestRef, { stage: TRANSACTION_STAGE.rate });

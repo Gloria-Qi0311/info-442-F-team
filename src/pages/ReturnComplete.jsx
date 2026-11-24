@@ -80,7 +80,13 @@ export default function ReturnComplete() {
       setCompletion(previous => ({ ...previous, rated: true }));
       setSuccess(true);
     } catch (cause) {
-      setError(cause.message || 'Could not save rating. Please try again.');
+      // R11: say clearly that the rating was not saved. Our own messages
+      // (like "Please select a star rating.") are shown as they are.
+      const networkProblem = cause.code || !cause.message
+        || cause.message === 'You are offline.' || cause.message.startsWith('Saving timed out');
+      setError(networkProblem
+        ? 'Your rating could not be saved. Check your connection and try again.'
+        : cause.message);
     } finally {
       setBusy(false);
     }

@@ -1,7 +1,7 @@
 // Firestore writes can wait indefinitely while the browser is offline.
 // A timeout does not prove the server rejected the write; refresh before retrying.
 export function saveWithTimeout(save, timeoutMs = 15000) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return Promise.reject(new Error('You are offline.'));
   }
   let timer;
