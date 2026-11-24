@@ -9,11 +9,29 @@
 .map-page .post-button { z-index: 1000; }
 /* Search and category filters (Issue #11) */
 .map-search { display: flex; gap: 8px; margin: 0 0 8px; }
-.map-search input { margin: 0; }
-.map-filters { display: flex; gap: 8px; margin: 0 0 12px; }
+.map-search input { margin: 0; flex: 1 1 auto; min-width: 0; }
+.map-search button { flex: 0 0 auto; white-space: nowrap; }
+.map-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .map-filter { background: #fff; color: #333; border: 1px solid #bbb; padding: 6px 14px; border-radius: 999px; }
 .map-filter.selected { background: var(--purple); color: #fff; border-color: var(--purple); }
+.map-filter:focus-visible, .map-search button:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
 .map-results { list-style: none; padding: 0; margin: 12px 0 0; }
 .map-results li { padding: 8px 0; border-bottom: 1px solid #eee; }
 .map-results a { color: var(--purple); font-weight: 600; }
 .map-results-meta { color: #555; }
+
+/* M6 (#25): mobile responsiveness for the search bar and category filters.
+   On phones the three filters share the row instead of wrapping, so the map
+   keeps its height, and every control is at least a 44px touch target. */
+@media (max-width: 480px) {
+  .map-search { gap: 6px; }
+  .map-search input { min-height: 44px; padding: 10px 12px; }
+  .map-search button { min-height: 44px; padding: 10px 14px; }
+  .map-filters { flex-wrap: nowrap; gap: 6px; }
+  .map-filter { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 8px 4px; text-align: center; }
+}
+
+@media (max-width: 360px) {
+  .map-search button { padding: 10px 10px; font-size: 0.9375rem; }
+  .map-filter { padding: 8px 2px; font-size: 0.9375rem; }
+}
