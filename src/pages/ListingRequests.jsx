@@ -166,7 +166,7 @@ export default function ListingRequests() {
                     <p><strong>Most received tags:</strong>{' '}
                       {ratings[request.requesterId].topTags.join(', ')}
                     </p>
-                  )
+                  )}
                 </div>
               <div>
                 <span className={`request-status request-status-${String(request.status).toLowerCase()}`}>
