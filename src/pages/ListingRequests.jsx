@@ -162,11 +162,11 @@ export default function ListingRequests() {
                   {ratings[request.requesterId]?.average != null
                     ? `${ratings[request.requesterId].average} / 5 stars`
                     : 'No ratings yet'}
-                  <p><strong>Most received tags:</strong>{' '}
-                    {ratings[request.requesterId]?.topTags.length
-                      ? ratings[request.requesterId].topTags.join(', ')
-                      : 'No tags yet'}
-                  </p>
+                  {Boolean(ratings[request.requesterId]?.topTags?.length) && (
+                    <p><strong>Most received tags:</strong>{' '}
+                      {ratings[request.requesterId].topTags.join(', ')}
+                    </p>
+                  )
                 </div>
               <div>
                 <span className={`request-status request-status-${String(request.status).toLowerCase()}`}>
