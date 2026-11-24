@@ -124,6 +124,21 @@ function RequestPanel({ listing, available }) {
   }
 
 
+  if (listing.type === LISTING_TYPES.lend) {
+    if (loading) return <p role="status">Loading your request...</p>;
+    const hasRequest = Boolean(request);
+    return (
+      <section className="item-request">
+        {hasRequest && <p>Your request: {request.status}</p>}
+        {hasRequest && <Link to={`/listings/${listing.id}/borrow/status`}>View my borrowing request</Link>}
+        {available && (!hasRequest || request.status === REQUEST_STATUS.cancelled) && (
+          <Link className="item-request-link" to={`/listings/${listing.id}/borrow`}>Send request!</Link>
+        )}
+        {error && <p role="alert" className="error">{error}</p>}
+      </section>
+    );
+  }
+
   if (loading) {
     return <p role="status">Loading your request...</p>;
   }
