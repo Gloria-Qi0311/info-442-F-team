@@ -20,6 +20,7 @@ export default function ReturnComplete() {
   const [pointsRecorded, setPointsRecorded] = useState(false);
   const isGive = role === 'giver' || role === 'recipient';
   const isLender = role === 'lender' || role === 'giver';
+  const canRate = !isGive || role === 'giver';
 
   useEffect(() => {
     if (!user) return undefined;
@@ -28,6 +29,7 @@ export default function ReturnComplete() {
       try {
         const result = await getCompletion(requestId, user.uid);
         if (isLender !== (result.request.ownerId === user.uid)) throw new Error('Wrong transaction role.');
+        if (isGive !== (result.request.listingType === 'give')) throw new Error('Wrong transaction type.');
         if (active) setCompletion(result);
       } catch (cause) {
         if (active) setError(cause.message || 'Could not load completion.');
@@ -81,22 +83,25 @@ export default function ReturnComplete() {
           {isGive ? (
             <>
               <p>The item has been picked up. Thank you for giving it away!</p>
+              {role === 'giver' && <p><strong>Points earned:</strong> {pointsRecorded ? '+15 points' : 'Processing completion points...'}</p>}
               <p><strong>Your total points:</strong> {completion.totalPoints}</p>
             </>
           ) : (
             <>
               <p><strong>Points earned:</strong> {pointsRecorded ? `+${isLender ? 10 : 5} points` : 'Processing completion points...'}</p>
               <p><strong>Your total points:</strong> {completion.totalPoints}</p>
-              {completion.rated ? (
+            </>
+          )}
+          {canRate && (completion.rated ? (
                 <p role="status">{success ? 'Rating submitted successfully!' : 'You have already rated this transaction.'}</p>
               ) : (
                 <form onSubmit={submit} noValidate>
-                  <h3>Rate {isLender ? 'borrower' : 'lender'}</h3>
+                  <h3>Rate {isLender ? (isGive ? 'recipient' : 'borrower') : 'lender'}</h3>
                   <fieldset>
                     <legend>Stars</legend>
                     {[1, 2, 3, 4, 5].map(n => (
                       <button key={n} type="button" aria-label={`${n} stars`}
-                        aria-pressed={stars === n} onClick={() => setStars(n)}>
+                        aria-pressed={n <= stars} onClick={() => setStars(n)}>
                         {n <= stars ? '★' : '☆'}
                       </button>
                     ))}
@@ -113,9 +118,7 @@ export default function ReturnComplete() {
                   </fieldset>
                   <button type="submit" disabled={busy}>{busy ? 'Submitting...' : 'Submit'}</button>
                 </form>
-              )}
-            </>
-          )}
+              ))}
         </>
       ) : null}
       {error && <p role="alert" className="error">{error}</p>}

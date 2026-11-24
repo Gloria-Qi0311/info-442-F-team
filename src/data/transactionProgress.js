@@ -133,12 +133,23 @@ export async function confirmSellGivePickup(requestId, uid) {
     if (!snap.exists()) throw new Error('Request not found.');
     const request = snap.data();
     if (request.status !== REQUEST_STATUS.approved) throw new Error('This transaction is not approved.');
+    const giverRef = doc(db, COLLECTIONS.users, request.ownerId);
+    const recordRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${request.ownerId}`);
+    const giverSnap = request.listingType === LISTING_TYPES.give ? await tx.get(giverRef) : null;
+    const recordSnap = request.listingType === LISTING_TYPES.give ? await tx.get(recordRef) : null;
     let confirmerId = null;
     if (request.listingType === LISTING_TYPES.sell) confirmerId = request.requesterId;
     if (request.listingType === LISTING_TYPES.give) confirmerId = request.ownerId;
     if (confirmerId !== uid) throw new Error('Only the buyer or the giver can confirm this pickup.');
     if ((request.stage || TRANSACTION_STAGE.approved) !== TRANSACTION_STAGE.approved) {
       throw new Error('This item has already been picked up.');
+    }
+    if (request.listingType === LISTING_TYPES.give) {
+      if (!giverSnap?.exists()) throw new Error('Giver profile is missing.');
+      if (recordSnap?.exists()) throw new Error('Giveaway points were already awarded.');
+      tx.update(giverRef, { totalPoints: (Number(giverSnap.data().totalPoints) || 0) + 15, lastPointsRequestId: requestId });
+      tx.set(recordRef, { requestId, userId: request.ownerId, points: 15,
+        reason: 'Completed giveaway transaction', createdAt: serverTimestamp() });
     }
     tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
   });

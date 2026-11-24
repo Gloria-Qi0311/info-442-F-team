@@ -26,12 +26,12 @@ service cloud.firestore {
         let beforeRequest = get(/databases/$(database)/documents/requests/$(requestId));
         let afterRequest = getAfter(/databases/$(database)/documents/requests/$(requestId));
         let recordPath = /databases/$(database)/documents/pointsRecords/$(requestId + '_' + uid);
-        let expectedPoints = uid == beforeRequest.data.ownerId ? 10 : 5;
+        let isGive = beforeRequest.data.listingType == 'give';
+        let expectedPoints = isGive ? 15 : (uid == beforeRequest.data.ownerId ? 10 : 5);
         return requestId is string
-          && beforeRequest.data.listingType == 'lend'
           && beforeRequest.data.status == 'Approved'
-          && beforeRequest.data.stage == 'Return'
-          && afterRequest.data.stage == 'Received'
+          && ((beforeRequest.data.listingType == 'lend' && beforeRequest.data.stage == 'Return' && afterRequest.data.stage == 'Received')
+            || (isGive && uid == beforeRequest.data.ownerId && beforeRequest.data.stage == 'Approved' && afterRequest.data.stage == 'Pickup'))
           && beforeRequest.data.ownerId == request.auth.uid
           && uid in [beforeRequest.data.ownerId, beforeRequest.data.requesterId]
           && !exists(recordPath)
@@ -214,6 +214,12 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['viewedByOwner']))
         ||
+        (resource.data.listingType == 'give' && resource.data.status == 'Approved'
+          && request.resource.data.status == 'Approved' && resource.data.stage == 'Pickup'
+          && request.resource.data.stage == 'Rate' && request.auth.uid == resource.data.ownerId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage'])
+          && existsAfter(/databases/$(database)/documents/ratings/$(id + '_' + request.auth.uid)))
+        ||
         // S6.7–S6.9, G4.8–G4.11: the buyer (sell) or the giver (give) marks the item as picked up.
         (resource.data.listingType in ['sell', 'give']
           && resource.data.status == 'Approved'
@@ -222,7 +228,11 @@ service cloud.firestore {
           && request.resource.data.stage == 'Pickup'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage'])
           && request.auth.uid == (resource.data.listingType == 'sell'
-            ? resource.data.requesterId : resource.data.ownerId))
+            ? resource.data.requesterId : resource.data.ownerId)
+          && (resource.data.listingType != 'give'
+            || (existsAfter(/databases/$(database)/documents/pointsRecords/$(id + '_' + resource.data.ownerId))
+              && getAfter(/databases/$(database)/documents/users/$(resource.data.ownerId)).data.totalPoints
+                == get(/databases/$(database)/documents/users/$(resource.data.ownerId)).data.totalPoints + 15)))
         ||
         // Pickup moves forward only when BOTH parties have uploaded a photo.
         (resource.data.listingType == 'lend'
@@ -294,8 +304,12 @@ service cloud.firestore {
         && request.resource.data.tags.size() <= 4
         && request.resource.data.tags.hasOnly(['On time', 'Polite', 'Gentle use', 'Quickly reply'])
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
+        && ((get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+          && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend')
+          || (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Pickup'
+            && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'give'
+            && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
+            && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Rate'))
         && (
           (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
             && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId == request.resource.data.rateeId)
@@ -309,12 +323,17 @@ service cloud.firestore {
       allow create: if isUwUser()
         && request.resource.data.keys().hasOnly(['requestId', 'userId', 'points', 'reason', 'createdAt'])
         && id == request.resource.data.requestId + '_' + request.resource.data.userId
-        && request.resource.data.reason == 'Completed borrowing transaction'
+        && request.resource.data.reason in ['Completed borrowing transaction', 'Completed giveaway transaction']
         && !exists(/databases/$(database)/documents/pointsRecords/$(id))
-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Return'
-        && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+        && ((get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
+          && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Return'
+          && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+          && request.resource.data.reason == 'Completed borrowing transaction')
+          || (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'give'
+            && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Approved'
+            && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Pickup'
+            && request.resource.data.reason == 'Completed giveaway transaction'))
         && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
         && request.resource.data.userId in [
           get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId,
@@ -323,7 +342,7 @@ service cloud.firestore {
         && request.resource.data.points == (
           request.resource.data.userId
             == get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId
-          ? 10 : 5
+          ? (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'give' ? 15 : 10) : 5
         )
         && getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints
           == (('totalPoints' in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data)
