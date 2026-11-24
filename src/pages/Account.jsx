@@ -10,6 +10,8 @@ export default function Account() {
   const user = useCurrentUser();
   const { user: authUser, signOutUser } = useAuth();
   const navigate = useNavigate();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState('');
   const [totalPoints, setTotalPoints] = useState(null);
 
   // #22 / P4: show the user's current total points, updated live.
@@ -23,13 +25,21 @@ export default function Account() {
   }, [authUser]);
 
   async function handleSignOut() {
-    try {
-      await signOutUser();
-      navigate('/verify', { replace: true });
-    } catch (error) {
-      console.error('Could not sign out:', error);
-    }
+  if (isSigningOut) return;
+
+  setIsSigningOut(true);
+  setSignOutError('');
+
+  try {
+    await signOutUser();
+    navigate('/verify', { replace: true });
+  } catch (error) {
+    console.error('Could not sign out:', error);
+    setSignOutError('Could not sign out. Please try again.');
+  } finally {
+    setIsSigningOut(false);
   }
+}
 
   return (
     <main className="page">
@@ -42,9 +52,19 @@ export default function Account() {
         <dt>Total points</dt>
         <dd>{totalPoints === null ? 'Loading...' : totalPoints}</dd>
       </dl>
-      <button type="button" className="account-sign-out" onClick={handleSignOut}>
-        Sign Out
+      <button
+        type="button"
+        className="account-sign-out"
+        onClick={handleSignOut}
+        disabled={isSigningOut}
+      >
+        {isSigningOut ? 'Signing out...' : 'Sign Out'}
       </button>
-    </main>
+      {signOutError && (
+        <p role="alert" className="error">
+          {signOutError}
+        </p>
+      )}
+      </main>
   );
 }
