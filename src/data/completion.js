@@ -18,7 +18,7 @@ export async function getCompletion(requestId, uid) {
   const request = snap.data();
   // Lending finishes at Received. A giveaway finishes at Pickup (G4 → G5).
   const lendDone = request.listingType === LISTING_TYPES.lend && request.stage === TRANSACTION_STAGE.received;
-  const giveDone = request.listingType === LISTING_TYPES.give && [TRANSACTION_STAGE.pickup, 'Rate'].includes(request.stage);
+  const giveDone = request.listingType === LISTING_TYPES.give && [TRANSACTION_STAGE.pickup, TRANSACTION_STAGE.rate].includes(request.stage);
   if (!(lendDone || giveDone)
     || request.status !== REQUEST_STATUS.approved
     || ![request.ownerId, request.requesterId].includes(uid)) {
@@ -59,7 +59,7 @@ export async function submitRating(requestId, uid, stars, tags) {
       rateeId: role === 'lender' ? request.requesterId : request.ownerId,
       stars, tags: selectedTags, createdAt: serverTimestamp(),
     });
-    if (giveAllowed) tx.update(requestRef, { stage: 'Rate' });
+    if (giveAllowed) tx.update(requestRef, { stage: TRANSACTION_STAGE.rate });
   });
 }
 

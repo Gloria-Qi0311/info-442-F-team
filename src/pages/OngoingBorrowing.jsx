@@ -25,7 +25,7 @@ const TITLES = {
 const TIMELINES = {
   [LISTING_TYPES.lend]: STAGES,
   [LISTING_TYPES.sell]: [TRANSACTION_STAGE.approved, TRANSACTION_STAGE.pickup],
-  [LISTING_TYPES.give]: [TRANSACTION_STAGE.approved, TRANSACTION_STAGE.pickup, 'Rate'],
+  [LISTING_TYPES.give]: [TRANSACTION_STAGE.approved, TRANSACTION_STAGE.pickup, TRANSACTION_STAGE.rate],
 };
 
 export default function OngoingBorrowing() {
