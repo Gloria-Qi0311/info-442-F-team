@@ -1,3 +1,4 @@
+import { saveWithTimeout } from '../data/saveWithTimeout';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -59,16 +60,6 @@ export default function ReturnComplete() {
 
   // R11: an offline save never finishes, so fail right away when offline
   // and stop waiting after 15 seconds.
-  function saveWithTimeout(save) {
-    if (!navigator.onLine) return Promise.reject(new Error('You are offline.'));
-    const saving = save();
-    saving.catch(() => {});
-    let timer;
-    const timedOut = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('Saving timed out. Refresh the page before trying again.')), 15000);
-    });
-    return Promise.race([saving, timedOut]).finally(() => clearTimeout(timer));
-  }
 
   async function submit(event) {
     event.preventDefault();
