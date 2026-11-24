@@ -6,6 +6,7 @@ import { db } from '../firebase';
 import { cancelItemRequest, requestIdFor } from '../data/requests';
 import { COLLECTIONS, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
+import { saveWithTimeout } from '../data/saveWithTimeout';
 
 function elapsedTime(createdAt) {
   if (!createdAt?.toDate) return '';
@@ -28,7 +29,9 @@ export default function BorrowRequestStatus() {
     setLoading(true);
     setError('');
     const requestRef = doc(db, COLLECTIONS.requests, requestIdFor(listingId, user.uid));
-    const unsubscribe = onSnapshot(requestRef, snap => {
+    const unsubscribe = onSnapshot(requestRef, { includeMetadataChanges: true }, snap => {
+      // Do not show an optimistic cancellation as final while Firestore is offline.
+      if (snap.metadata.hasPendingWrites) return;
       setRequest(snap.exists() ? { id: snap.id, ...snap.data() } : null);
       setLoading(false);
     }, cause => {
@@ -44,9 +47,13 @@ export default function BorrowRequestStatus() {
     setBusy(true);
     setError('');
     try {
-      setRequest(await cancelItemRequest(request.id, user.uid));
+      if (!navigator.onLine) {
+        throw new Error('You are offline. Your borrowing request could not be canceled.');
+      }
+      const result = await saveWithTimeout(() => cancelItemRequest(request.id, user.uid));
+      setRequest(result);
     } catch (cause) {
-      setError(cause.message || 'Could not cancel request.');
+      setError(`Your borrowing request could not be canceled. ${cause.message || 'Check your connection and try again.'} If the connection was interrupted, refresh to check its status before trying again.`);
     } finally {
       setBusy(false);
     }
