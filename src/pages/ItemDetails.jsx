@@ -7,6 +7,7 @@ import { usePickupAreas } from '../data/pickupAreas';
 import { cancelItemRequest, getMyRequest, sendItemRequest } from '../data/requests';
 import { LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
+import { saveWithTimeout } from '../data/saveWithTimeout';
 
 const TYPE_TEXT = {
   [LISTING_TYPES.lend]: { label: 'Borrow', owner: 'Lender', heading: 'Borrowing details' },
@@ -41,20 +42,6 @@ function displayDate(value) {
     return new Date(year, month - 1, day).toLocaleDateString();
   }
   return String(value);
-}
-
-// NF9: a Firestore save never finishes while offline, so fail right away when
-// offline and stop waiting after 15 seconds. Sending and canceling reuse the
-// same request document, so trying again later can't create a duplicate.
-function saveWithTimeout(save) {
-  if (!navigator.onLine) return Promise.reject(new Error('offline'));
-  const saving = save();
-  saving.catch(() => {});
-  let timer;
-  const timedOut = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error('timeout')), 15000);
-  });
-  return Promise.race([saving, timedOut]).finally(() => clearTimeout(timer));
 }
 
 // Our own errors (like "This item is no longer available.") are shown as-is.
@@ -120,11 +107,11 @@ function RequestPanel({ listing, available }) {
     setBusy(true);
     setError('');
     try {
-      setRequest(await saveWithTimeout(() => cancelItemRequest(request.id, user.uid)));
+      const confirmed = await saveWithTimeout(() => cancelItemRequest(request.id, user.uid));
+      setRequest(confirmed);
     } catch (cause) {
       console.error('Could not cancel request:', cause);
-      setError(friendlyError(cause,
-        'Your request could not be canceled. Check your connection and try again.'));
+      setError(`Your request could not be canceled. ${cause.message || 'Check your connection.'} Refresh to confirm its status before retrying.`);
     } finally {
       setBusy(false);
     }
@@ -140,6 +127,7 @@ function RequestPanel({ listing, available }) {
       </section>
     );
   }
+
 
   if (listing.type === LISTING_TYPES.lend) {
     if (loading) return <p role="status">Loading your request...</p>;

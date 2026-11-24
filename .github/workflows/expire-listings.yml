@@ -1,0 +1,35 @@
+name: Expire listings
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: expire-listings
+  cancel-in-progress: false
+
+jobs:
+  expire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Expire past listings using the existing deployment identity
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GCLOUD_PROJECT: info442-husky-share
+        run: |
+          umask 077
+          credential_file="$RUNNER_TEMP/expiry-sa.json"
+          trap 'rm -f "$credential_file"' EXIT
+          printf '%s' "$SA" > "$credential_file"
+          GOOGLE_APPLICATION_CREDENTIALS="$credential_file" node scripts/expire-listings.js

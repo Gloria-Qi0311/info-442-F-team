@@ -17,5 +17,6 @@ jobs:
       - run: npm ci
       - run: npm install --no-save @firebase/rules-unit-testing@4.0.1
       - run: npx firebase emulators:exec --only firestore --project demo-husky-share "npm run test:rules"
+      - run: npm run test:unit
       - run: npm run lint
       - run: npm run build

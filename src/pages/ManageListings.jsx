@@ -315,7 +315,7 @@ export default function ManageListings() {
                 </p>
 
                 {/* Issue #14: S3 / G3 view requests for this listing */}
-                {(type === 'lend' || type === 'sell' || type === 'give') && (
+                {(pendingCounts[item.id] || 0) > 0 && (
                   <p>
                     <Link to={`/manage/${type}/${item.id}/requests`}>
                       View requests

@@ -1,3 +1,6 @@
+import { initializeApp as initializeAdminApp, deleteApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { expireListings } from '../scripts/lib/expire-listings.js';
 import { readFile } from 'node:fs/promises';
 import { before, after, beforeEach, test } from 'node:test';
 import {
@@ -6,6 +9,8 @@ import {
   assertFails,
 } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { rejects, equal } from 'node:assert/strict';
+import { saveWithTimeout } from '../src/data/saveWithTimeout.js';
 
 const projectId = 'demo-husky-share';
 let testEnv;
@@ -421,10 +426,13 @@ test('completion points cannot be awarded later or duplicated after Received', a
   }));
 
   const requester = uwContext('requester-1');
-  await assertSucceeds(setDoc(doc(requester, 'ratings/' + requestId + '_requester-1'), {
+  const ratingBatch = writeBatch(requester);
+  ratingBatch.set(doc(requester, 'ratings/' + requestId + '_requester-1'), {
     requestId, raterId: 'requester-1', rateeId: 'owner-1',
     stars: 5, tags: ['Polite'], createdAt: new Date(),
-  }));
+  });
+  ratingBatch.set(doc(requester, 'ratingSummaries/owner-1'), { ratingCount: 1, ratingTotal: 5, overallRating: 5, lastRatingId: requestId + '_requester-1' });
+  await assertSucceeds(ratingBatch.commit());
   await assertFails(setDoc(doc(uwContext('outsider'), 'ratings/' + requestId + '_outsider'), {
     requestId, raterId: 'outsider', rateeId: 'owner-1',
     stars: 5, tags: [], createdAt: new Date(),
@@ -586,6 +594,7 @@ test('giver can rate recipient only once after giveaway pickup and advance to Ra
   await assertFails(setDoc(ratingRef, rating));
   const batch = writeBatch(giver);
   batch.set(ratingRef, rating);
+  batch.set(doc(giver, 'ratingSummaries/requester-1'), { ratingCount: 1, ratingTotal: 5, overallRating: 5, lastRatingId: ratingRef.id });
   batch.update(requestRef, { stage: 'Rate' });
   await assertSucceeds(batch.commit());
   await assertFails(setDoc(ratingRef, rating));
@@ -672,6 +681,46 @@ test('giveaway pickup creates missing giver profile and grants points once', asy
   if (user.data().totalPoints !== 15) throw new Error('Giveaway points missing.');
 });
 
+
+test('cancellation save timeout returns a clear error instead of hanging', async () => {
+  await rejects(
+    saveWithTimeout(() => new Promise(() => {}), 5),
+    /Saving timed out/,
+  );
+});
+
+test('a failed cancellation must not change the pending request in Firestore', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Pending',
+    });
+  });
+  const outsider = uwContext('requester-2');
+  await assertFails(updateDoc(doc(outsider, 'requests/item-1_requester-1'), {
+    status: 'Canceled', cancelledAt: new Date(),
+  }));
+  const requester = uwContext('requester-1');
+  const current = await getDoc(doc(requester, 'requests/item-1_requester-1'));
+  if (current.data().status !== 'Pending') throw new Error('Failed cancellation changed request status.');
+});
+
+test('giver may check a missing points record before the first pickup', async () => {
+  const giver = uwContext('owner-1');
+  const missing = await assertSucceeds(getDoc(doc(giver, 'pointsRecords/give-1_requester-1_owner-1')));
+  if (missing.exists()) throw new Error('Unexpected points record.');
+});
+
+test('existing points records remain private to their recipient', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'pointsRecords/other-request_owner-1'), {
+      requestId: 'other-request', userId: 'owner-1', points: 15,
+      reason: 'Completed giveaway transaction',
+    });
+  });
+  await assertSucceeds(getDoc(doc(uwContext('owner-1'), 'pointsRecords/other-request_owner-1')));
+  await assertFails(getDoc(doc(uwContext('requester-1'), 'pointsRecords/other-request_owner-1')));
+});
 // Sprint 2 QA (#21/#22): the giveaway pickup transaction reads the giver's
 // points record before it exists. That read must be allowed, or Firestore
 // rejects the whole pickup.
@@ -689,4 +738,68 @@ test('users can check their own missing points record but not others', async () 
   });
   await assertFails(getDoc(doc(giver, 'pointsRecords/' + requestId + '_requester-1')));
   await assertSucceeds(getDoc(doc(uwContext('requester-1'), 'pointsRecords/' + requestId + '_requester-1')));
+});
+
+async function seedRatingRequest(id, requesterId = 'requester-1') {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), 'requests/' + id), {
+      listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
+      requesterId, status: 'Approved', stage: 'Received',
+    });
+  });
+}
+
+function ratingWrite(db, requestId, stars, summary) {
+  const batch = writeBatch(db);
+  const id = requestId + '_requester-1';
+  batch.set(doc(db, 'ratings/' + id), {
+    requestId, raterId: 'requester-1', rateeId: 'owner-1', stars, tags: [], createdAt: new Date(),
+  });
+  if (summary) batch.set(doc(db, 'ratingSummaries/owner-1'), { ...summary, lastRatingId: id });
+  return batch.commit();
+}
+
+test('R8 requires atomic summary, rounds halves up, and rejects replay or forged totals', async () => {
+  await seedRatingRequest('rating-a');
+  await seedRatingRequest('rating-b');
+  const db = uwContext('requester-1');
+  await assertFails(ratingWrite(db, 'rating-a', 4));
+  await assertFails(ratingWrite(db, 'rating-a', 4, { ratingCount: 1, ratingTotal: 5, overallRating: 5 }));
+  await assertSucceeds(ratingWrite(db, 'rating-a', 4, { ratingCount: 1, ratingTotal: 4, overallRating: 4 }));
+  await assertFails(ratingWrite(db, 'rating-a', 4, { ratingCount: 2, ratingTotal: 8, overallRating: 4 }));
+  await assertFails(ratingWrite(db, 'rating-b', 5, { ratingCount: 2, ratingTotal: 9, overallRating: 4 }));
+  await assertSucceeds(ratingWrite(db, 'rating-b', 5, { ratingCount: 2, ratingTotal: 9, overallRating: 5 }));
+  equal((await getDoc(doc(db, 'ratingSummaries/owner-1'))).data().overallRating, 5);
+  await assertFails(updateDoc(doc(uwContext('owner-1'), 'ratingSummaries/owner-1'), { overallRating: 1 }));
+});
+
+test('R8 rejects a stale concurrent total without leaving a rating behind', async () => {
+  await seedRatingRequest('rating-a');
+  await seedRatingRequest('rating-b');
+  const db = uwContext('requester-1');
+  const results = await Promise.allSettled([
+    ratingWrite(db, 'rating-a', 4, { ratingCount: 1, ratingTotal: 4, overallRating: 4 }),
+    ratingWrite(db, 'rating-b', 4, { ratingCount: 1, ratingTotal: 4, overallRating: 4 }),
+  ]);
+  equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  equal((await getDoc(doc(db, 'ratingSummaries/owner-1'))).data().ratingCount, 1);
+});
+
+test('LS9 worker persists expiry without a page visit and is idempotent', async () => {
+  if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('Emulator required');
+  const app = initializeAdminApp({ projectId }, 'expiry-test');
+  try {
+    const db = getFirestore(app);
+    await db.doc('listings/expired').set({ ...listing, availableUntil: '2026-07-01' });
+    await db.doc('listings/today').set({ ...listing, availableUntil: '2026-07-02' });
+    await db.doc('listings/loan').set({ ...listing, status: 'On Loan', availableUntil: '2026-07-01' });
+    const now = new Date('2026-07-02T07:00:00Z');
+    equal(await expireListings(db, now), 1);
+    equal((await db.doc('listings/expired').get()).data().status, 'Inactive');
+    equal((await db.doc('listings/today').get()).data().status, 'Active');
+    equal((await db.doc('listings/loan').get()).data().status, 'On Loan');
+    equal(await expireListings(db, now), 0);
+  } finally {
+    await deleteApp(app);
+  }
 });

@@ -1,5 +1,6 @@
 import { collection, doc, getDocs, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import { isPastAvailability } from './availability.js';
 import { COLLECTIONS, LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from './schema';
 
 // Approve or decline a request. Only the listing owner may make this decision.
@@ -59,7 +60,7 @@ export async function decideItemRequest(requestId, ownerId, decision, pickup = {
     }
     if (request.status === REQUEST_STATUS.cancelled) throw new Error('This request was canceled.');
     if (request.status !== REQUEST_STATUS.pending) throw new Error('This request is no longer pending.');
-    if (decision === 'approve' && listing.status !== LISTING_STATUS.active) {
+    if (decision === 'approve' && (listing.status !== LISTING_STATUS.active || isPastAvailability(listing))) {
       throw new Error('This item is no longer available.');
     }
     if (decision === 'decline') {

@@ -314,11 +314,36 @@ service cloud.firestore {
               : matchingRequest().data.stage == 'Return'));
       allow update, delete: if false;
     }
+    // R8: a summary is immutable except alongside one new, validated rating.
+    // Keep it separate from self-editable user profile fields.
+    match /ratingSummaries/{uid} {
+      function validSummary() {
+        let data = request.resource.data;
+        let ratingPath = /databases/$(database)/documents/ratings/$(data.lastRatingId);
+        let rating = getAfter(ratingPath).data;
+        let count = resource == null ? 0 : resource.data.ratingCount;
+        let total = resource == null ? 0 : resource.data.ratingTotal;
+        return data.keys().hasOnly(['ratingTotal', 'ratingCount', 'overallRating', 'lastRatingId'])
+          && !exists(ratingPath)
+          && rating.raterId == request.auth.uid && rating.rateeId == uid
+          && data.ratingCount == count + 1
+          && data.ratingTotal == total + rating.stars
+          && data.overallRating == math.round(data.ratingTotal * 1.0 / data.ratingCount);
+      }
+      allow read: if isUwUser();
+      allow create, update: if isUwUser() && validSummary();
+      allow delete: if false;
+    }
+
     match /ratings/{id} {
       allow read: if isUwUser();
       allow create: if isUwUser()
         && request.resource.data.keys().hasOnly(['requestId', 'raterId', 'rateeId', 'stars', 'tags', 'createdAt'])
         && request.resource.data.raterId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/ratingSummaries/$(request.resource.data.rateeId)).data.lastRatingId == id
+        && getAfter(/databases/$(database)/documents/ratingSummaries/$(request.resource.data.rateeId)).data.ratingCount
+          == (exists(/databases/$(database)/documents/ratingSummaries/$(request.resource.data.rateeId))
+            ? get(/databases/$(database)/documents/ratingSummaries/$(request.resource.data.rateeId)).data.ratingCount : 0) + 1
         && id == request.resource.data.requestId + '_' + request.auth.uid
         && request.resource.data.stars is int
         && request.resource.data.stars >= 1
