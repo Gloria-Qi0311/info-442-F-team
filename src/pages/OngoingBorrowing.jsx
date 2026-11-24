@@ -36,6 +36,7 @@ export default function OngoingBorrowing() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [retryHint, setRetryHint] = useState('');
   const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState('');
   const [myPickupConfirmed, setMyPickupConfirmed] = useState(false);
@@ -90,6 +91,7 @@ export default function OngoingBorrowing() {
   async function confirm() {
     setBusy(true);
     setError('');
+    setRetryHint('');
     try {
       await confirmExchange(requestId, user.uid, action, photo);
       navigate(action === 'return' && isOwner ? `${base}/complete` : base, { replace: true });
@@ -98,6 +100,7 @@ export default function OngoingBorrowing() {
       setError(cause.message === 'Please upload a photo.'
         ? cause.message
         : `${step} could not be confirmed. ${cause.message || 'Please try again.'}`);
+      setRetryHint('Your confirmation was not completed. Check your connection and try again.');
     } finally {
       setBusy(false);
     }
@@ -115,6 +118,7 @@ export default function OngoingBorrowing() {
       }
     } catch (cause) {
       setError(`Pickup could not be confirmed. ${cause.message || 'Please try again.'}`);
+      setRetryHint('Pickup was not saved. Check your connection and try again.');
     } finally {
       setBusy(false);
     }
@@ -205,6 +209,7 @@ export default function OngoingBorrowing() {
         </>
       )}
       {error && <p role="alert" className="error">{error}</p>}
+      {retryHint && <p role="status">{retryHint}</p>}
     </main>
   );
 }

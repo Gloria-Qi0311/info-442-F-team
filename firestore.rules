@@ -41,8 +41,11 @@ service cloud.firestore {
           && request.resource.data.totalPoints == previous + expectedPoints;
       }
       allow read: if isUwUser();
-      allow create: if isUwUser() && request.auth.uid == uid
-        && (!('totalPoints' in request.resource.data) || request.resource.data.totalPoints == 0);
+      allow create: if isUwUser()
+        && ((request.auth.uid == uid
+          && (!('totalPoints' in request.resource.data) || request.resource.data.totalPoints == 0))
+          || (request.resource.data.keys().hasOnly(['totalPoints', 'lastPointsRequestId'])
+            && completionPointsAward(0)));
       allow update: if isUwUser()
         && (
           (request.auth.uid == uid
@@ -232,7 +235,8 @@ service cloud.firestore {
           && (resource.data.listingType != 'give'
             || (existsAfter(/databases/$(database)/documents/pointsRecords/$(id + '_' + resource.data.ownerId))
               && getAfter(/databases/$(database)/documents/users/$(resource.data.ownerId)).data.totalPoints
-                == get(/databases/$(database)/documents/users/$(resource.data.ownerId)).data.totalPoints + 15)))
+                == (exists(/databases/$(database)/documents/users/$(resource.data.ownerId))
+                  ? get(/databases/$(database)/documents/users/$(resource.data.ownerId)).data.totalPoints : 0) + 15)))
         ||
         // Pickup moves forward only when BOTH parties have uploaded a photo.
         (resource.data.listingType == 'lend'
@@ -345,8 +349,8 @@ service cloud.firestore {
           ? (get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'give' ? 15 : 10) : 5
         )
         && getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints
-          == (('totalPoints' in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data)
-            ? get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints : 0)
+          == (exists(/databases/$(database)/documents/users/$(request.resource.data.userId))
+            ? get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.get('totalPoints', 0) : 0)
             + request.resource.data.points;
       allow update, delete: if false;
     }

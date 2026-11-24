@@ -39,7 +39,7 @@ export default function ReturnComplete() {
     };
     load();
     return () => { active = false; };
-  }, [requestId, user, isLender]);
+  }, [requestId, user, isLender, isGive]);
 
   useEffect(() => {
     if (!user || !requestId) return undefined;

@@ -70,8 +70,9 @@ export default function ListingRequests() {
           if (!active) return;
           setRequests(received);
           setLoading(false);
+          const visible = received.filter(request => [REQUEST_STATUS.pending, REQUEST_STATUS.approved].includes(request.status));
           const pending = received.filter(request => request.status === REQUEST_STATUS.pending);
-          const borrowerIds = [...new Set(pending.map(request => request.requesterId))];
+          const borrowerIds = [...new Set(visible.map(request => request.requesterId))];
           const summaries = await Promise.all(borrowerIds.map(async id => {
             try { return [id, await getRequesterRatingSummary(id)]; }
             catch (cause) { console.error('Could not load borrower rating:', cause); return [id, null]; }
