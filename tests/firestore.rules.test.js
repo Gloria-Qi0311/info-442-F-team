@@ -11,7 +11,7 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, writeBatch, deleteField, runTransaction, deleteDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, writeBatch, deleteField, runTransaction, deleteDoc, getDocs, collection, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { rejects, equal, deepEqual } from 'node:assert/strict';
 import { saveWithTimeout } from '../src/data/saveWithTimeout.js';
 
@@ -26,6 +26,21 @@ const listing = {
   availableFrom: '2026-11-01',
   availableUntil: '2026-12-31',
 };
+
+// NF9 / G4.11: stamp a server-side save window, then consume it in the batch.
+async function startWindow(db, uid) {
+  await setDoc(doc(db, 'saveAttempts/' + uid), { startedAt: serverTimestamp() });
+}
+function inTime(batch, db, uid, windowMs = 15000) {
+  batch.update(doc(db, 'saveAttempts/' + uid), { windowMs, consumedAt: serverTimestamp() });
+  return batch;
+}
+async function timedSet(db, uid, path, data) {
+  await startWindow(db, uid);
+  const batch = writeBatch(db);
+  batch.set(doc(db, path), data);
+  return inTime(batch, db, uid).commit();
+}
 
 function uwContext(uid) {
   return testEnv.authenticatedContext(uid, {
@@ -334,16 +349,19 @@ test('lending pickup needs both photos and return advances in the correct order'
   });
 
   await assertFails(updateDoc(doc(borrower, 'requests/' + requestId), { stage: 'Pickup' }));
-  await assertSucceeds(setDoc(doc(borrower, 'confirmationPhotos/' + requestId + '_pickup_requester-1'), photo('requester-1', 'pickup')));
+  await assertFails(setDoc(doc(borrower, 'confirmationPhotos/' + requestId + '_pickup_requester-1'), photo('requester-1', 'pickup')));
+  await assertSucceeds(timedSet(borrower, 'requester-1', 'confirmationPhotos/' + requestId + '_pickup_requester-1', photo('requester-1', 'pickup')));
   await assertFails(updateDoc(doc(borrower, 'requests/' + requestId), { stage: 'Pickup' }));
 
-  const pickup = writeBatch(owner);
+  await startWindow(owner, 'owner-1');
+  const pickup = inTime(writeBatch(owner), owner, 'owner-1');
   pickup.set(doc(owner, 'confirmationPhotos/' + requestId + '_pickup_owner-1'), photo('owner-1', 'pickup'));
   pickup.update(doc(owner, 'requests/' + requestId), { stage: 'Pickup' });
   await assertSucceeds(pickup.commit());
 
   await assertFails(updateDoc(doc(owner, 'requests/' + requestId), { stage: 'Received' }));
-  const returning = writeBatch(borrower);
+  await startWindow(borrower, 'requester-1');
+  const returning = inTime(writeBatch(borrower), borrower, 'requester-1');
   returning.set(doc(borrower, 'confirmationPhotos/' + requestId + '_return_requester-1'), photo('requester-1', 'return'));
   returning.update(doc(borrower, 'requests/' + requestId), { stage: 'Return' });
   await assertSucceeds(returning.commit());
@@ -354,18 +372,19 @@ test('lending pickup needs both photos and return advances in the correct order'
       status: 'On Loan', approvedRequestId: requestId,
     });
   });
-  const receivingWithoutListing = writeBatch(owner);
+  await startWindow(owner, 'owner-1');
+  const receivingWithoutListing = inTime(writeBatch(owner), owner, 'owner-1');
   receivingWithoutListing.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), photo('owner-1', 'return'));
   receivingWithoutListing.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
   await assertFails(receivingWithoutListing.commit());
 
-  const receivingWithoutPoints = writeBatch(owner);
+  const receivingWithoutPoints = inTime(writeBatch(owner), owner, 'owner-1');
   receivingWithoutPoints.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), photo('owner-1', 'return'));
   receivingWithoutPoints.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
   receivingWithoutPoints.update(doc(owner, 'listings/item-1'), { status: 'Active', approvedRequestId: null });
   await assertFails(receivingWithoutPoints.commit());
 
-  const receiving = writeBatch(owner);
+  const receiving = inTime(writeBatch(owner), owner, 'owner-1');
   receiving.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), photo('owner-1', 'return'));
   receiving.update(doc(owner, 'requests/' + requestId), { stage: 'Received' });
   receiving.update(doc(owner, 'listings/item-1'), { status: 'Active', approvedRequestId: null });
@@ -563,7 +582,8 @@ test('giveaway pickup awards exactly 15 points atomically and cannot be repeated
   const userRef = doc(giver, 'users/owner-1');
   const pointsRef = doc(giver, 'pointsRecords/' + requestId + '_owner-1');
   await assertFails(updateDoc(requestRef, { stage: 'Pickup' }));
-  const pickup = writeBatch(giver);
+  await startWindow(giver, 'owner-1');
+  const pickup = inTime(writeBatch(giver), giver, 'owner-1');
   pickup.update(requestRef, { stage: 'Pickup' });
   pickup.update(userRef, { totalPoints: 19, lastPointsRequestId: requestId });
   pickup.set(pointsRef, {
@@ -644,7 +664,8 @@ test('lending return completes when neither participant has a profile', async ()
     });
   });
   const owner = uwContext('owner-1');
-  const receiving = writeBatch(owner);
+  await startWindow(owner, 'owner-1');
+  const receiving = inTime(writeBatch(owner), owner, 'owner-1');
   receiving.set(doc(owner, 'confirmationPhotos/' + requestId + '_return_owner-1'), {
     requestId, userId: 'owner-1', kind: 'return',
     photoUrl: 'data:image/jpeg;base64,AAAA', createdAt: new Date(),
@@ -672,7 +693,8 @@ test('giveaway pickup creates missing giver profile and grants points once', asy
     });
   });
   const giver = uwContext('owner-1');
-  const pickup = writeBatch(giver);
+  await startWindow(giver, 'owner-1');
+  const pickup = inTime(writeBatch(giver), giver, 'owner-1');
   pickup.update(doc(giver, 'requests/' + requestId), { stage: 'Pickup' });
   pickup.set(doc(giver, 'users/owner-1'), { totalPoints: 15, lastPointsRequestId: requestId });
   pickup.set(doc(giver, 'pointsRecords/' + requestId + '_owner-1'), {
@@ -684,6 +706,54 @@ test('giveaway pickup creates missing giver profile and grants points once', asy
   if (user.data().totalPoints !== 15) throw new Error('Giveaway points missing.');
 });
 
+
+test('NF9 / G4.11 a pickup commit that lands after the save window is rejected and changes nothing', async () => {
+  const requestId = 'give-1_requester-1';
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/' + requestId), {
+      listingId: 'give-1', listingType: 'give', ownerId: 'owner-1',
+      requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
+    });
+    await setDoc(doc(db, 'users/owner-1'), { totalPoints: 75 });
+    // The save started 16 seconds ago; the client has already shown "Saving timed out".
+    await setDoc(doc(db, 'saveAttempts/owner-1'), {
+      startedAt: Timestamp.fromMillis(Date.now() - 16000),
+    });
+  });
+  const giver = uwContext('owner-1');
+  const latePickup = () => {
+    const batch = inTime(writeBatch(giver), giver, 'owner-1');
+    batch.update(doc(giver, 'requests/' + requestId), { stage: 'Pickup' });
+    batch.update(doc(giver, 'users/owner-1'), { totalPoints: 90, lastPointsRequestId: requestId });
+    batch.set(doc(giver, 'pointsRecords/' + requestId + '_owner-1'), {
+      requestId, userId: 'owner-1', points: 15,
+      reason: 'Completed giveaway transaction', createdAt: new Date(),
+    });
+    return batch;
+  };
+  await assertFails(latePickup().commit());
+  // A commit cannot claim a longer window than the client timeout either.
+  const tooLong = writeBatch(giver);
+  tooLong.update(doc(giver, 'saveAttempts/owner-1'), { windowMs: 60000, consumedAt: serverTimestamp() });
+  tooLong.update(doc(giver, 'requests/' + requestId), { stage: 'Pickup' });
+  await assertFails(tooLong.commit());
+  // Skipping the save window entirely is rejected.
+  const noWindow = writeBatch(giver);
+  noWindow.update(doc(giver, 'requests/' + requestId), { stage: 'Pickup' });
+  noWindow.update(doc(giver, 'users/owner-1'), { totalPoints: 90, lastPointsRequestId: requestId });
+  noWindow.set(doc(giver, 'pointsRecords/' + requestId + '_owner-1'), {
+    requestId, userId: 'owner-1', points: 15,
+    reason: 'Completed giveaway transaction', createdAt: new Date(),
+  });
+  await assertFails(noWindow.commit());
+  equal((await getDoc(doc(giver, 'requests/' + requestId))).data().stage, 'Approved');
+  equal((await getDoc(doc(giver, 'users/owner-1'))).data().totalPoints, 75);
+  // A window that has already been used cannot be reused for a later commit.
+  await startWindow(giver, 'owner-1');
+  await assertSucceeds(latePickup().commit());
+  await assertFails(inTime(writeBatch(giver), giver, 'owner-1').commit());
+});
 
 test('cancellation save timeout returns a clear error instead of hanging', async () => {
   await rejects(

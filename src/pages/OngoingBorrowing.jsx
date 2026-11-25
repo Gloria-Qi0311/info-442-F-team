@@ -106,7 +106,7 @@ export default function OngoingBorrowing() {
     setError('');
     setRetryHint('');
     try {
-      await saveWithTimeout(isExpired => confirmExchange(requestId, user.uid, action, photo, isExpired));
+      await saveWithTimeout((isExpired, deadline) => confirmExchange(requestId, user.uid, action, photo, isExpired, deadline));
       navigate(action === 'return' && isOwner ? `${base}/complete` : base, { replace: true });
     } catch (cause) {
       const step = action === PHOTO_KINDS.pickup ? 'Pickup' : 'Return';
@@ -123,7 +123,7 @@ export default function OngoingBorrowing() {
     setBusy(true);
     setError('');
     try {
-      await saveWithTimeout(isExpired => confirmSellGivePickup(requestId, user.uid, isExpired));
+      await saveWithTimeout((isExpired, deadline) => confirmSellGivePickup(requestId, user.uid, isExpired, deadline));
       if (type === LISTING_TYPES.give) {
         navigate(`${base}/complete`, { replace: true });
       } else {

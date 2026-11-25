@@ -45,7 +45,8 @@ before(async () => {
     clients[uid] = { db,
       requests: await server.ssrLoadModule('/src/data/requests.js'),
       borrow: await server.ssrLoadModule('/src/data/borrowRequests.js'),
-      decisions: await server.ssrLoadModule('/src/data/requestDecisions.js') };
+      decisions: await server.ssrLoadModule('/src/data/requestDecisions.js'),
+      progress: await server.ssrLoadModule('/src/data/transactionProgress.js') };
   }
 });
 after(async () => {
@@ -117,6 +118,23 @@ test('NF9 real approval transaction fails offline without any partial decision',
   } finally { offline = false; }
   deepEqual((await owner.requests.getRequestsForListing('client-offline', 'owner')).map(row => row.status), ['Pending', 'Pending']);
   equal((await getDoc(doc(owner.db, 'listings/client-offline'))).data().approvalEpoch, 0);
+});
+
+test('NF9 / G4.11 real giveaway pickup saves only inside the save window', async () => {
+  await env.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'requests/give-window_alice'), { listingId: 'give-window', listingType: 'give',
+      ownerId: 'owner', requesterId: 'alice', status: 'Approved', stage: 'Approved' });
+    await setDoc(doc(db, 'users/owner'), { totalPoints: 60 });
+  });
+  const { owner } = clients;
+  // The client deadline has passed before the commit can be sent: nothing is saved.
+  await rejects(owner.progress.confirmSellGivePickup('give-window_alice', 'owner', () => false, Date.now() - 1));
+  equal((await getDoc(doc(owner.db, 'requests/give-window_alice'))).data().stage, 'Approved');
+  equal((await getDoc(doc(owner.db, 'users/owner'))).data().totalPoints, 60);
+  await owner.progress.confirmSellGivePickup('give-window_alice', 'owner', () => false, Date.now() + 15000);
+  equal((await getDoc(doc(owner.db, 'requests/give-window_alice'))).data().stage, 'Pickup');
+  equal((await getDoc(doc(owner.db, 'users/owner'))).data().totalPoints, 75);
 });
 
 async function step(label, run) { try { return await run(); } catch (cause) { throw new Error(label, { cause }); } }

@@ -12,6 +12,7 @@ export const COLLECTIONS = {
   ratings: 'ratings',
   pointsRecords: 'pointsRecords',
   healthChecks: 'healthChecks',
+  saveAttempts: 'saveAttempts',
 };
 
 export const LISTING_TYPES = { lend: 'lend', sell: 'sell', give: 'give' };

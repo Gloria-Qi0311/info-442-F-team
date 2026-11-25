@@ -1,13 +1,15 @@
 // Firestore writes can wait indefinitely while the browser is offline.
 // A timeout does not prove the server rejected the write; refresh before retrying.
-// `save` receives `isExpired()`, so a transaction can refuse to write after the timeout.
+// `save` receives `isExpired()` and the deadline (ms since epoch), so a transaction
+// can refuse to write after the timeout.
 export function saveWithTimeout(save, timeoutMs = 15000) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return Promise.reject(new Error('You are offline.'));
   }
   let timer;
   let expired = false;
-  const pending = Promise.resolve().then(() => save(() => expired));
+  const deadline = Date.now() + timeoutMs;
+  const pending = Promise.resolve().then(() => save(() => expired, deadline));
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
       expired = true;

@@ -27,6 +27,30 @@ service cloud.firestore {
           == data.requestEpoch;
     }
 
+    // NF9 / G4.11: a pickup or return commit must land inside the client's save
+    // window, measured from a server-stamped start, or the whole commit is rejected.
+    function savedInTime() {
+      return getAfter(/databases/$(database)/documents/saveAttempts/$(request.auth.uid))
+        .data.get('consumedAt', null) == request.time;
+    }
+    match /saveAttempts/{uid} {
+      allow read: if isUwUser() && request.auth.uid == uid;
+      allow create, update: if isUwUser() && request.auth.uid == uid
+        && (
+          (request.resource.data.keys().hasOnly(['startedAt'])
+            && request.resource.data.startedAt == request.time)
+          ||
+          (resource != null && !('consumedAt' in resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['windowMs', 'consumedAt'])
+            && request.resource.data.windowMs is int
+            && request.resource.data.windowMs > 0
+            && request.resource.data.windowMs <= 15000
+            && request.resource.data.consumedAt == request.time
+            && request.time < resource.data.startedAt + duration.value(request.resource.data.windowMs, 'ms'))
+        );
+      allow delete: if false;
+    }
+
     // Setup check used by Issue 1.1. Keep test data behind UW verification.
     match /healthChecks/{id} {
       allow read: if isUwUser();
@@ -278,6 +302,7 @@ service cloud.firestore {
           && resource.data.get('stage', 'Approved') == 'Approved'
           && request.resource.data.stage == 'Pickup'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage'])
+          && savedInTime()
           && request.auth.uid == (resource.data.listingType == 'sell'
             ? resource.data.requesterId : resource.data.ownerId)
           && (resource.data.listingType != 'give'
@@ -292,6 +317,7 @@ service cloud.firestore {
           && resource.data.status == 'Approved'
           && request.resource.data.status == 'Approved'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage'])
+          && savedInTime()
           && (
             (resource.data.stage == 'Approved'
               && request.resource.data.stage == 'Pickup'
@@ -336,6 +362,7 @@ service cloud.firestore {
         && matchingRequest().data.status == 'Approved'
         && matchingRequest().data.listingType == 'lend'
         && request.auth.uid in [matchingRequest().data.ownerId, matchingRequest().data.requesterId]
+        && savedInTime()
         && (request.resource.data.kind == 'pickup'
           ? matchingRequest().data.stage == 'Approved'
           : (request.auth.uid == matchingRequest().data.requesterId
