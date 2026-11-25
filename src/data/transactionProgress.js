@@ -28,7 +28,7 @@ export async function getTransaction(requestId, uid) {
   return request;
 }
 
-export async function confirmExchange(requestId, uid, kind, photo) {
+export async function confirmExchange(requestId, uid, kind, photo, isExpired = () => false) {
   if (![PHOTO_KINDS.pickup, PHOTO_KINDS.return].includes(kind)) {
     throw new Error('Unknown confirmation type.');
   }
@@ -79,6 +79,8 @@ export async function confirmExchange(requestId, uid, kind, photo) {
            listingSnap.data().status !== 'On Loan' || listingSnap.data().approvedRequestId !== requestId)) {
         throw new Error('The listing is not ready to become available again.');
       }
+      // NF9 / G4.11: after "Saving timed out", a retried transaction must not write.
+      if (isExpired()) throw new Error('Saving timed out. Check your connection.');
 
       tx.set(myRef, { requestId, userId: uid, kind, photoUrl, createdAt: serverTimestamp() });
       if (kind === PHOTO_KINDS.pickup && theirs.exists()) {
@@ -120,7 +122,7 @@ export async function confirmExchange(requestId, uid, kind, photo) {
 
 // S6.7–S6.9, G4.8–G4.11: for selling, the buyer marks the item as picked up.
 // For giving, the giver marks it. If anything fails, the stage stays the same.
-export async function confirmSellGivePickup(requestId, uid) {
+export async function confirmSellGivePickup(requestId, uid, isExpired = () => false) {
   const requestRef = doc(db, COLLECTIONS.requests, requestId);
   await runTransaction(db, async tx => {
     const snap = await tx.get(requestRef);
@@ -138,6 +140,8 @@ export async function confirmSellGivePickup(requestId, uid) {
     if ((request.stage || TRANSACTION_STAGE.approved) !== TRANSACTION_STAGE.approved) {
       throw new Error('This item has already been picked up.');
     }
+    // NF9 / G4.11: after "Saving timed out", a retried transaction must not write.
+    if (isExpired()) throw new Error('Saving timed out. Check your connection.');
     if (request.listingType === LISTING_TYPES.give) {
       if (recordSnap?.exists()) throw new Error('Giveaway points were already awarded.');
       const giverUpdate = { totalPoints: (Number(giverSnap?.data()?.totalPoints) || 0) + 15, lastPointsRequestId: requestId };

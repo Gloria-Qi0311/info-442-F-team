@@ -78,6 +78,13 @@ export default function OngoingBorrowing() {
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
+  // B7.3 / L7.3: pickup and return reuse this page, so clear the pickup photo
+  // when the action changes and require a new return photo.
+  useEffect(() => {
+    setPhoto(null);
+    setPreview('');
+  }, [action]);
+
   const permitted = validRole && validAction && request
     && request.listingType === type
     && request.status === REQUEST_STATUS.approved
@@ -99,7 +106,7 @@ export default function OngoingBorrowing() {
     setError('');
     setRetryHint('');
     try {
-      await saveWithTimeout(() => confirmExchange(requestId, user.uid, action, photo));
+      await saveWithTimeout(isExpired => confirmExchange(requestId, user.uid, action, photo, isExpired));
       navigate(action === 'return' && isOwner ? `${base}/complete` : base, { replace: true });
     } catch (cause) {
       const step = action === PHOTO_KINDS.pickup ? 'Pickup' : 'Return';
@@ -116,7 +123,7 @@ export default function OngoingBorrowing() {
     setBusy(true);
     setError('');
     try {
-      await saveWithTimeout(() => confirmSellGivePickup(requestId, user.uid));
+      await saveWithTimeout(isExpired => confirmSellGivePickup(requestId, user.uid, isExpired));
       if (type === LISTING_TYPES.give) {
         navigate(`${base}/complete`, { replace: true });
       } else {
