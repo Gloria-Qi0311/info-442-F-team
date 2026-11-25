@@ -75,6 +75,32 @@ Based on the *Husky Share – Logical Data Model*. Full field list is in `src/da
 | `pointsRecords` | One doc per completed request (doc id = request id, prevents double points) |
 | `healthChecks` | Setup test docs only — remove its open rule after Issue 1.2 |
 
+## Demo data
+
+`emulator-data/` holds an exported emulator snapshot for demos: 241 listings across lend, sell and
+give, several completed transactions, ratings and points, and three verified test accounts
+(`alice@uw.edu`, `bob@uw.edu`, `carol@uw.edu`). It is already migrated to the request schema
+introduced in #75.
+
+Start the emulators with it instead of `npm run emulators`:
+
+```bash
+npx firebase emulators:start --only firestore,auth,storage --import ./emulator-data
+```
+
+Add `--export-on-exit ./emulator-data` if you want your changes written back to the snapshot.
+
+**If you ever start from an older snapshot or from data created before #75**, run both migrations
+before using the app, or every request, approval and rating will be refused:
+
+```bash
+GCLOUD_PROJECT=info442-husky-share FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/migrate-request-epochs.js        # dry run first
+GCLOUD_PROJECT=info442-husky-share FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/migrate-request-epochs.js --apply
+GCLOUD_PROJECT=info442-husky-share FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/backfill-rating-summaries.js --apply
+```
+
+Production needs no manual step: `deploy.yml` runs both migrations on every push to `main`.
+
 ## Team conventions
 
 - Branch per issue: `issue-1.2-uw-verification`, then open a PR to `main`.
