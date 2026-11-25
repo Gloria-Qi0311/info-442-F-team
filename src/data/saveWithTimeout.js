@@ -11,3 +11,15 @@ export function saveWithTimeout(save, timeoutMs = 15000) {
   });
   return Promise.race([pending, timeout]).finally(() => clearTimeout(timer));
 }
+
+// Turns an error into text that is safe to show. Messages the app wrote itself
+// (like "Please upload a photo." or "You are offline.") are kept. Firebase and
+// security-rules errors carry a `code` and internal details (for example
+// "evaluation error at L345 ..."), so they are logged and replaced by `fallback`.
+export function userMessage(cause, fallback) {
+  if (!cause || cause.code || !cause.message) {
+    if (cause) console.error(cause);
+    return fallback;
+  }
+  return cause.message;
+}

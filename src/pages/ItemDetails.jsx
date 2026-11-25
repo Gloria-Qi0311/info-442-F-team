@@ -7,7 +7,7 @@ import { usePickupAreas } from '../data/pickupAreas';
 import { cancelItemRequest, getMyRequest, sendItemRequest } from '../data/requests';
 import { LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
-import { saveWithTimeout } from '../data/saveWithTimeout';
+import { saveWithTimeout, userMessage } from '../data/saveWithTimeout';
 
 const TYPE_TEXT = {
   [LISTING_TYPES.lend]: { label: 'Borrow', owner: 'Lender', heading: 'Borrowing details' },
@@ -42,15 +42,6 @@ function displayDate(value) {
     return new Date(year, month - 1, day).toLocaleDateString();
   }
   return String(value);
-}
-
-// Our own errors (like "This item is no longer available.") are shown as-is.
-// Network and Firebase errors get a clear message instead.
-function friendlyError(cause, fallback) {
-  if (cause.code || !cause.message || cause.message === 'offline' || cause.message === 'timeout') {
-    return fallback;
-  }
-  return cause.message;
 }
 
 // Issue #14: "I want it" for Sell (S5) and Give (G6) listings.
@@ -95,7 +86,7 @@ function RequestPanel({ listing, available }) {
       setRequest(await saveWithTimeout(() => sendItemRequest(listing.id, user)));
     } catch (cause) {
       console.error('Could not send request:', cause);
-      setError(friendlyError(cause,
+      setError(userMessage(cause,
         'Your request could not be sent. Check your connection and try again.'));
     } finally {
       setBusy(false);
@@ -111,7 +102,7 @@ function RequestPanel({ listing, available }) {
       setRequest(confirmed);
     } catch (cause) {
       console.error('Could not cancel request:', cause);
-      setError(`Your request could not be canceled. ${cause.message || 'Check your connection.'} Refresh to confirm its status before retrying.`);
+      setError(`Your request could not be canceled. ${userMessage(cause, 'Check your connection.')} Refresh to confirm its status before retrying.`);
     } finally {
       setBusy(false);
     }

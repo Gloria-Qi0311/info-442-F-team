@@ -6,7 +6,7 @@ import { db } from '../firebase';
 import { cancelItemRequest, requestIdFor } from '../data/requests';
 import { COLLECTIONS, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
-import { saveWithTimeout } from '../data/saveWithTimeout';
+import { saveWithTimeout, userMessage } from '../data/saveWithTimeout';
 
 function elapsedTime(createdAt) {
   if (!createdAt?.toDate) return '';
@@ -53,7 +53,7 @@ export default function BorrowRequestStatus() {
       const result = await saveWithTimeout(() => cancelItemRequest(request.id, user.uid));
       setRequest(result);
     } catch (cause) {
-      setError(`Your borrowing request could not be canceled. ${cause.message || 'Check your connection and try again.'} If the connection was interrupted, refresh to check its status before trying again.`);
+      setError(`Your borrowing request could not be canceled. ${userMessage(cause, 'Check your connection and try again.')} If the connection was interrupted, refresh to check its status before trying again.`);
     } finally {
       setBusy(false);
     }

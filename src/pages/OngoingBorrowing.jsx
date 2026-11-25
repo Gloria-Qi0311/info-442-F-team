@@ -8,6 +8,7 @@ import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_ST
 import { confirmExchange, confirmSellGivePickup, confirmationId, isParticipant, STAGES } from '../data/transactionProgress';
 import './ItemDetails.css';
 import { checkPhotoFile } from '../data/photos';
+import { saveWithTimeout, userMessage } from '../data/saveWithTimeout';
 
 // L5/B5 lending, S6 selling, G4 giving.
 const ROLES = {
@@ -89,18 +90,8 @@ export default function OngoingBorrowing() {
   const expected = action === PHOTO_KINDS.pickup ? TRANSACTION_STAGE.approved
     : isOwner ? TRANSACTION_STAGE.return : TRANSACTION_STAGE.pickup;
 
-  // G4.10 / S6.8 / L6.6 / B6.6 / L7.6 / B7.5: an offline save never finishes,
-  // so fail right away when offline and stop waiting after 15 seconds.
-  function saveWithTimeout(save) {
-    if (!navigator.onLine) return Promise.reject(new Error('You are offline.'));
-    const saving = save();
-    saving.catch(() => {});
-    let timer;
-    const timedOut = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('Saving timed out. Refresh the page before trying again.')), 15000);
-    });
-    return Promise.race([saving, timedOut]).finally(() => clearTimeout(timer));
-  }
+  // G4.10 / S6.8 / L6.6 / B6.6 / L7.6 / B7.5: saveWithTimeout fails right away
+  // when offline and stops waiting after 15 seconds.
 
   async function confirm() {
     setBusy(true);
@@ -113,7 +104,7 @@ export default function OngoingBorrowing() {
       const step = action === PHOTO_KINDS.pickup ? 'Pickup' : 'Return';
       setError(cause.message === 'Please upload a photo.'
         ? cause.message
-        : `${step} could not be confirmed. ${cause.message || 'Please try again.'}`);
+        : `${step} could not be confirmed. ${userMessage(cause, 'Please try again.')}`);
       setRetryHint('Your confirmation was not completed. Check your connection and try again.');
     } finally {
       setBusy(false);
@@ -131,7 +122,7 @@ export default function OngoingBorrowing() {
         navigate(base, { replace: true });
       }
     } catch (cause) {
-      setError(`Pickup could not be confirmed. ${cause.message || 'Please try again.'}`);
+      setError(`Pickup could not be confirmed. ${userMessage(cause, 'Please try again.')}`);
       setRetryHint('Pickup was not saved. Check your connection and try again.');
     } finally {
       setBusy(false);
@@ -175,9 +166,14 @@ export default function OngoingBorrowing() {
             ) : <p>This item has already been picked up.</p>
           ) : !isLend ? (
             <>
+              {/* S6.7 / G4.8: clicking "Mark as Picked Up" changes the status right away. */}
               {stage === TRANSACTION_STAGE.approved && (
                 canMarkPickup
-                  ? <Link to={`${base}/pickup`}>Mark as Picked Up</Link>
+                  ? (
+                    <button type="button" disabled={busy} onClick={markPickedUp}>
+                      {busy ? 'Saving...' : 'Mark as Picked Up'}
+                    </button>
+                  )
                   : <p>Waiting for the {type === LISTING_TYPES.sell ? 'buyer' : 'giver'} to mark the item as picked up.</p>
               )}
               {stage === TRANSACTION_STAGE.pickup && (
