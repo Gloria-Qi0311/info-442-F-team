@@ -72,14 +72,16 @@ export default function ListingRequests() {
           setRequests(received);
           setLoading(false);
           const visible = received.filter(request => [REQUEST_STATUS.pending, REQUEST_STATUS.approved].includes(request.status));
-          const pending = received.filter(request => request.status === REQUEST_STATUS.pending);
           const borrowerIds = [...new Set(visible.map(request => request.requesterId))];
           const summaries = await Promise.all(borrowerIds.map(async id => {
             try { return [id, await getRequesterRatingSummary(id)]; }
             catch (cause) { console.error('Could not load borrower rating:', cause); return [id, null]; }
           }));
           if (active) setRatings(Object.fromEntries(summaries));
-          if (pending.length) markRequestsViewed(pending);
+          // H4: opening a listing's request page views all of its requests,
+          // including ones canceled before the owner saw them (B4.7/S5.17/G6.18
+          // keep those off this page, but they must stop counting as unviewed).
+          markRequestsViewed(received);
         }, () => {
           if (active) {
             setError('Could not load requests. Please try again.');

@@ -167,14 +167,13 @@ export async function getMySentRequests(requesterId) {
   return requests;
 }
 
-// Issue #17 (H4): live count of Pending requests on the user's listings that
-// the user has not viewed yet. Returns the unsubscribe function.
+// Issue #17 (H4): live count of requests on the user's listings that the user
+// has not viewed yet, whatever their status. Returns the unsubscribe function.
 export function watchUnviewedRequestCount(ownerId, onCount) {
   return onSnapshot(
     query(
       collection(db, COLLECTIONS.requests),
       where('ownerId', '==', ownerId),
-      where('status', '==', REQUEST_STATUS.pending),
       where('viewedByOwner', '==', false),
     ),
     (snap) => onCount(snap.size),
