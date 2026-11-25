@@ -1,0 +1,71 @@
+diff --git a/src/data/requests.js b/src/data/requests.js
+index c63e6c7..4a67db2 100644
+--- a/src/data/requests.js
++++ b/src/data/requests.js
+@@ -167,14 +167,13 @@ export async function getMySentRequests(requesterId) {
+   return requests;
+ }
+ 
+-// Issue #17 (H4): live count of Pending requests on the user's listings that
+-// the user has not viewed yet. Returns the unsubscribe function.
++// Issue #17 (H4): live count of requests on the user's listings that the user
++// has not viewed yet, whatever their status. Returns the unsubscribe function.
+ export function watchUnviewedRequestCount(ownerId, onCount) {
+   return onSnapshot(
+     query(
+       collection(db, COLLECTIONS.requests),
+       where('ownerId', '==', ownerId),
+-      where('status', '==', REQUEST_STATUS.pending),
+       where('viewedByOwner', '==', false),
+     ),
+     (snap) => onCount(snap.size),
+diff --git a/src/pages/ListingRequests.jsx b/src/pages/ListingRequests.jsx
+index ebd2148..eeac14a 100644
+--- a/src/pages/ListingRequests.jsx
++++ b/src/pages/ListingRequests.jsx
+@@ -72,14 +72,16 @@ export default function ListingRequests() {
+           setRequests(received);
+           setLoading(false);
+           const visible = received.filter(request => [REQUEST_STATUS.pending, REQUEST_STATUS.approved].includes(request.status));
+-          const pending = received.filter(request => request.status === REQUEST_STATUS.pending);
+           const borrowerIds = [...new Set(visible.map(request => request.requesterId))];
+           const summaries = await Promise.all(borrowerIds.map(async id => {
+             try { return [id, await getRequesterRatingSummary(id)]; }
+             catch (cause) { console.error('Could not load borrower rating:', cause); return [id, null]; }
+           }));
+           if (active) setRatings(Object.fromEntries(summaries));
+-          if (pending.length) markRequestsViewed(pending);
++          // H4: opening a listing's request page views all of its requests,
++          // including ones canceled before the owner saw them (B4.7/S5.17/G6.18
++          // keep those off this page, but they must stop counting as unviewed).
++          markRequestsViewed(received);
+         }, () => {
+           if (active) {
+             setError('Could not load requests. Please try again.');
+diff --git a/src/pages/ManageListings.jsx b/src/pages/ManageListings.jsx
+index 907956d..f7e700a 100644
+--- a/src/pages/ManageListings.jsx
++++ b/src/pages/ManageListings.jsx
+@@ -314,14 +314,14 @@ export default function ManageListings() {
+                   {pendingCounts[item.id] || 0}
+                 </p>
+ 
+-                {/* Issue #14: S3 / G3 view requests for this listing */}
+-                {(pendingCounts[item.id] || 0) > 0 && (
+-                  <p>
+-                    <Link to={`/manage/${type}/${item.id}/requests`}>
+-                      View requests
+-                    </Link>
+-                  </p>
+-                )}
++                {/* Issue #14: S3 / G3 view requests for this listing. Always
++                    shown: L4.8, S3.16 and G3.15 require the request page to open
++                    with a "No pending requests" message when there are none. */}
++                <p>
++                  <Link to={`/manage/${type}/${item.id}/requests`}>
++                    View requests
++                  </Link>
++                </p>
+ 
+                 {item.category && (
+                   <p>

@@ -1,0 +1,74 @@
+diff --git a/src/data/transactionProgress.js b/src/data/transactionProgress.js
+index f55a428..552c447 100644
+--- a/src/data/transactionProgress.js
++++ b/src/data/transactionProgress.js
+@@ -126,7 +126,9 @@ export async function confirmExchange(requestId, uid, kind, photo) {
+ 
+ // S6.7–S6.9, G4.8–G4.11: for selling, the buyer marks the item as picked up.
+ // For giving, the giver marks it. If anything fails, the stage stays the same.
+-export async function confirmSellGivePickup(requestId, uid) {
++// `save` lets the page cancel a slow save (same pattern as createListing):
++// once save.aborted is true the transaction will not write.
++export async function confirmSellGivePickup(requestId, uid, save = {}) {
+   const requestRef = doc(db, COLLECTIONS.requests, requestId);
+   await runTransaction(db, async tx => {
+     const snap = await tx.get(requestRef);
+@@ -140,6 +142,8 @@ export async function confirmSellGivePickup(requestId, uid) {
+     if ((request.stage || TRANSACTION_STAGE.approved) !== TRANSACTION_STAGE.approved) {
+       throw new Error('This item has already been picked up.');
+     }
++    if (save.aborted) throw new Error('Saving was cancelled.');
++    save.committing = true;
+     tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
+   });
+ }
+diff --git a/src/pages/OngoingBorrowing.jsx b/src/pages/OngoingBorrowing.jsx
+index ae9030a..0cae43a 100644
+--- a/src/pages/OngoingBorrowing.jsx
++++ b/src/pages/OngoingBorrowing.jsx
+@@ -103,11 +103,35 @@ export default function OngoingBorrowing() {
+     }
+   }
+ 
++  // S6.8 / G4.10: if the pickup can't be saved (offline or too slow),
++  // stop showing "Saving..." and tell the user. The stage stays unchanged.
+   async function markPickedUp() {
+-    setBusy(true);
+     setError('');
++    if (!navigator.onLine) {
++      setError('Pickup could not be confirmed. Please check your connection and try again.');
++      return;
++    }
++    setBusy(true);
++
++    const save = { aborted: false, committing: false };
++    const saving = confirmSellGivePickup(requestId, user.uid, save);
++    saving.catch(() => {});
++    let timer;
++    const timedOut = new Promise((resolve) => {
++      timer = setTimeout(() => resolve('timeout'), 15000);
++    });
++
+     try {
+-      await confirmSellGivePickup(requestId, user.uid);
++      const result = await Promise.race([saving, timedOut]);
++      if (result === 'timeout') {
++        save.aborted = true;
++        // If the write was already sent, wait for its real result
++        // so we never show an error for a pickup that was saved.
++        if (!save.committing) {
++          throw new Error('Please check your connection and try again.');
++        }
++        await saving;
++      }
+       if (type === LISTING_TYPES.give) {
+         navigate(`${base}/complete`, { replace: true });
+       } else {
+@@ -116,6 +140,7 @@ export default function OngoingBorrowing() {
+     } catch (cause) {
+       setError(`Pickup could not be confirmed. ${cause.message || 'Please try again.'}`);
+     } finally {
++      clearTimeout(timer);
+       setBusy(false);
+     }
+   }

@@ -1,0 +1,445 @@
+diff --git a/firestore.rules b/firestore.rules
+index 2d9a2f0..4c5ddd3 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -40,6 +40,26 @@ service cloud.firestore {
+           && getAfter(recordPath).data.points == expectedPoints
+           && request.resource.data.totalPoints == previous + expectedPoints;
+       }
++      // G5.1–G5.2: the giver gets 15 points in the same write that moves
++      // their giveaway to Pickup. Only the giver can be awarded.
++      function giveawayPointsAward(previous) {
++        let requestId = request.resource.data.lastPointsRequestId;
++        let beforeRequest = get(/databases/$(database)/documents/requests/$(requestId));
++        let afterRequest = getAfter(/databases/$(database)/documents/requests/$(requestId));
++        let recordPath = /databases/$(database)/documents/pointsRecords/$(requestId + '_' + uid);
++        return requestId is string
++          && beforeRequest.data.listingType == 'give'
++          && beforeRequest.data.status == 'Approved'
++          && beforeRequest.data.get('stage', 'Approved') == 'Approved'
++          && afterRequest.data.stage == 'Pickup'
++          && beforeRequest.data.ownerId == request.auth.uid
++          && uid == beforeRequest.data.ownerId
++          && !exists(recordPath)
++          && existsAfter(recordPath)
++          && getAfter(recordPath).data.userId == uid
++          && getAfter(recordPath).data.points == 15
++          && request.resource.data.totalPoints == previous + 15;
++      }
+       allow read: if isUwUser();
+       allow create: if isUwUser() && request.auth.uid == uid
+         && (!('totalPoints' in request.resource.data) || request.resource.data.totalPoints == 0);
+@@ -52,6 +72,9 @@ service cloud.firestore {
+           || completionPointsAward(
+               ('totalPoints' in resource.data) ? resource.data.totalPoints : 0
+             )
++          || giveawayPointsAward(
++              ('totalPoints' in resource.data) ? resource.data.totalPoints : 0
++            )
+         );
+       allow delete: if false;
+     }
+@@ -222,7 +245,10 @@ service cloud.firestore {
+           && request.resource.data.stage == 'Pickup'
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stage'])
+           && request.auth.uid == (resource.data.listingType == 'sell'
+-            ? resource.data.requesterId : resource.data.ownerId))
++            ? resource.data.requesterId : resource.data.ownerId)
++          // G5.1: a giveaway can only reach Pickup together with the giver's points.
++          && (resource.data.listingType == 'sell'
++            || existsAfter(/databases/$(database)/documents/pointsRecords/$(id + '_' + resource.data.ownerId))))
+         ||
+         // Pickup moves forward only when BOTH parties have uploaded a photo.
+         (resource.data.listingType == 'lend'
+@@ -305,30 +331,47 @@ service cloud.firestore {
+       allow update, delete: if false;
+     }
+     match /pointsRecords/{id} {
++      function recordRequest() {
++        return get(/databases/$(database)/documents/requests/$(request.resource.data.requestId));
++      }
++      function recordRequestAfter() {
++        return getAfter(/databases/$(database)/documents/requests/$(request.resource.data.requestId));
++      }
++      function userTotalAddsUp() {
++        return getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints
++          == (('totalPoints' in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data)
++            ? get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints : 0)
++            + request.resource.data.points;
++      }
++      // L8.1–L8.2, B8.1–B8.2: lender +10, borrower +5 when lending reaches Received.
++      function lendingRecord() {
++        return request.resource.data.reason == 'Completed borrowing transaction'
++          && recordRequest().data.listingType == 'lend'
++          && recordRequest().data.stage == 'Return'
++          && recordRequestAfter().data.stage == 'Received'
++          && request.resource.data.userId in [recordRequest().data.ownerId, recordRequest().data.requesterId]
++          && request.resource.data.points
++            == (request.resource.data.userId == recordRequest().data.ownerId ? 10 : 5);
++      }
++      // G5.1–G5.2: giver +15 when the giveaway reaches Pickup.
++      function giveawayRecord() {
++        return request.resource.data.reason == 'Completed giveaway transaction'
++          && recordRequest().data.listingType == 'give'
++          && recordRequest().data.get('stage', 'Approved') == 'Approved'
++          && recordRequestAfter().data.stage == 'Pickup'
++          && request.resource.data.userId == recordRequest().data.ownerId
++          && request.resource.data.points == 15;
++      }
+       allow read: if isUwUser() && resource.data.userId == request.auth.uid;
++      // P3: the doc id is requestId_userId, so the same transaction can never award twice.
+       allow create: if isUwUser()
+         && request.resource.data.keys().hasOnly(['requestId', 'userId', 'points', 'reason', 'createdAt'])
+         && id == request.resource.data.requestId + '_' + request.resource.data.userId
+-        && request.resource.data.reason == 'Completed borrowing transaction'
+         && !exists(/databases/$(database)/documents/pointsRecords/$(id))
+-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.listingType == 'lend'
+-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.status == 'Approved'
+-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Return'
+-        && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.stage == 'Received'
+-        && get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId == request.auth.uid
+-        && request.resource.data.userId in [
+-          get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId,
+-          get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.requesterId
+-        ]
+-        && request.resource.data.points == (
+-          request.resource.data.userId
+-            == get(/databases/$(database)/documents/requests/$(request.resource.data.requestId)).data.ownerId
+-          ? 10 : 5
+-        )
+-        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints
+-          == (('totalPoints' in get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data)
+-            ? get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.totalPoints : 0)
+-            + request.resource.data.points;
++        && recordRequest().data.status == 'Approved'
++        && recordRequest().data.ownerId == request.auth.uid
++        && (lendingRecord() || giveawayRecord())
++        && userTotalAddsUp();
+       allow update, delete: if false;
+     }
+ 
+diff --git a/src/auth/AuthContext.jsx b/src/auth/AuthContext.jsx
+index c4b4098..e5fdcd9 100644
+--- a/src/auth/AuthContext.jsx
++++ b/src/auth/AuthContext.jsx
+@@ -6,6 +6,7 @@ import {
+   signOut,
+ } from 'firebase/auth';
+ import { auth } from '../firebase';
++import { ensureUserProfile } from '../data/userProfile';
+ 
+ const AuthContext = createContext(null);
+ 
+@@ -26,6 +27,9 @@ export function AuthProvider({ children }) {
+     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+       if (isVerifiedUwUser(firebaseUser)) {
+         setUser(firebaseUser);
++        ensureUserProfile(firebaseUser).catch((error) => {
++          console.error('Could not create the user profile:', error);
++        });
+       } else {
+         setUser(null);
+         if (firebaseUser) {
+diff --git a/src/data/schema.js b/src/data/schema.js
+index d7ca1ff..818dffa 100644
+--- a/src/data/schema.js
++++ b/src/data/schema.js
+@@ -68,6 +68,6 @@ confirmationPhotos/{photoId}
+ ratings/{ratingId}
+   requestId, raterId, rateeId, stars (1–5), tags (array), createdAt
+ 
+-pointsRecords/{requestId}      ← doc id = request id, so points can't be added twice
++pointsRecords/{requestId_userId}  ← one record per user per transaction, so points can't be added twice
+   userId, points, reason, createdAt
+ */
+diff --git a/src/data/transactionProgress.js b/src/data/transactionProgress.js
+index f55a428..be91a98 100644
+--- a/src/data/transactionProgress.js
++++ b/src/data/transactionProgress.js
+@@ -10,6 +10,11 @@ export const STAGES = [
+   TRANSACTION_STAGE.received,
+ ];
+ 
++// P1, L8.1–L8.2, B8.1–B8.2, G5.1: points per completed transaction.
++export const LENDER_POINTS = 10;
++export const BORROWER_POINTS = 5;
++export const GIVEAWAY_POINTS = 15;
++
+ export function confirmationId(requestId, kind, uid) {
+   return `${requestId}_${kind}_${uid}`;
+ }
+@@ -82,7 +87,7 @@ export async function confirmExchange(requestId, uid, kind, photo) {
+         throw new Error('The listing is not ready to become available again.');
+       }
+       if (isReceivingReturn && (!ownerUserSnap?.exists() || !borrowerUserSnap?.exists())) {
+-        throw new Error('Both participant profiles are required to award completion points.');
++        throw new Error('A user profile is missing, so points cannot be awarded. Both people need to open Husky Share once while signed in, then try again.');
+       }
+ 
+       tx.set(myRef, { requestId, userId: uid, kind, photoUrl, createdAt: serverTimestamp() });
+@@ -104,14 +109,14 @@ export async function confirmExchange(requestId, uid, kind, photo) {
+ 
+         tx.update(requestRef, { stage: TRANSACTION_STAGE.received });
+         tx.update(listingRef, { status: 'Active', approvedRequestId: null });
+-        tx.update(ownerUserRef, { totalPoints: ownerPoints + 10, lastPointsRequestId: requestId });
+-        tx.update(borrowerUserRef, { totalPoints: borrowerPoints + 5, lastPointsRequestId: requestId });
++        tx.update(ownerUserRef, { totalPoints: ownerPoints + LENDER_POINTS, lastPointsRequestId: requestId });
++        tx.update(borrowerUserRef, { totalPoints: borrowerPoints + BORROWER_POINTS, lastPointsRequestId: requestId });
+         tx.set(ownerPointsRef, {
+-          requestId, userId: request.ownerId, points: 10,
++          requestId, userId: request.ownerId, points: LENDER_POINTS,
+           reason: 'Completed borrowing transaction', createdAt: serverTimestamp(),
+         });
+         tx.set(borrowerPointsRef, {
+-          requestId, userId: request.requesterId, points: 5,
++          requestId, userId: request.requesterId, points: BORROWER_POINTS,
+           reason: 'Completed borrowing transaction', createdAt: serverTimestamp(),
+         });
+       }
+@@ -126,10 +131,15 @@ export async function confirmExchange(requestId, uid, kind, photo) {
+ 
+ // S6.7–S6.9, G4.8–G4.11: for selling, the buyer marks the item as picked up.
+ // For giving, the giver marks it. If anything fails, the stage stays the same.
+-export async function confirmSellGivePickup(requestId, uid) {
++// `save` lets the page cancel a slow save (same pattern as createListing):
++// once save.aborted is true the transaction will not write.
++export async function confirmSellGivePickup(requestId, uid, save = {}) {
+   const requestRef = doc(db, COLLECTIONS.requests, requestId);
++  // G5.1: a giveaway also awards the giver points, so read their profile too.
++  const giverRef = doc(db, COLLECTIONS.users, uid);
++  const giverPointsRef = doc(db, COLLECTIONS.pointsRecords, `${requestId}_${uid}`);
+   await runTransaction(db, async tx => {
+-    const snap = await tx.get(requestRef);
++    const [snap, giverSnap] = await Promise.all([tx.get(requestRef), tx.get(giverRef)]);
+     if (!snap.exists()) throw new Error('Request not found.');
+     const request = snap.data();
+     if (request.status !== REQUEST_STATUS.approved) throw new Error('This transaction is not approved.');
+@@ -140,6 +150,23 @@ export async function confirmSellGivePickup(requestId, uid) {
+     if ((request.stage || TRANSACTION_STAGE.approved) !== TRANSACTION_STAGE.approved) {
+       throw new Error('This item has already been picked up.');
+     }
++    const isGive = request.listingType === LISTING_TYPES.give;
++    if (isGive && !giverSnap.exists()) {
++      throw new Error('Your profile is not set up yet. Please refresh the page and try again.');
++    }
++    if (save.aborted) throw new Error('Saving was cancelled.');
++    save.committing = true;
+     tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
++    // G5.1–G5.2 + P3: giver gets 15 points exactly once. This only runs while
++    // the stage is still Approved, and the rules refuse a second record with
++    // the same requestId_uid id.
++    if (isGive) {
++      const giverPoints = Number(giverSnap.data().totalPoints) || 0;
++      tx.update(giverRef, { totalPoints: giverPoints + GIVEAWAY_POINTS, lastPointsRequestId: requestId });
++      tx.set(giverPointsRef, {
++        requestId, userId: uid, points: GIVEAWAY_POINTS,
++        reason: 'Completed giveaway transaction', createdAt: serverTimestamp(),
++      });
++    }
+   });
+ }
+diff --git a/src/data/userProfile.js b/src/data/userProfile.js
+new file mode 100644
+index 0000000..1e19066
+--- /dev/null
++++ b/src/data/userProfile.js
+@@ -0,0 +1,17 @@
++import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
++import { db } from '../firebase';
++import { COLLECTIONS } from './schema';
++
++// P1–P2: every signed-in user needs a users/{uid} document so points can be
++// added to it. Runs on every sign-in; only creates the document if missing.
++export async function ensureUserProfile(user) {
++  const ref = doc(db, COLLECTIONS.users, user.uid);
++  const snap = await getDoc(ref);
++  if (snap.exists()) return;
++  await setDoc(ref, {
++    name: user.displayName || 'UW Student',
++    uwEmail: user.email,
++    totalPoints: 0,
++    createdAt: serverTimestamp(),
++  });
++}
+diff --git a/src/pages/Account.jsx b/src/pages/Account.jsx
+index ec2f703..baad951 100644
+--- a/src/pages/Account.jsx
++++ b/src/pages/Account.jsx
+@@ -1,11 +1,26 @@
++import { useEffect, useState } from 'react';
+ import { useNavigate } from 'react-router-dom';
++import { doc, onSnapshot } from 'firebase/firestore';
+ import { useAuth } from '../auth/AuthContext';
+ import { useCurrentUser } from '../data/currentUser';
++import { db } from '../firebase';
++import { COLLECTIONS } from '../data/schema';
+ 
+ export default function Account() {
+   const user = useCurrentUser();
+-  const { signOutUser } = useAuth();
++  const { user: authUser, signOutUser } = useAuth();
+   const navigate = useNavigate();
++  const [totalPoints, setTotalPoints] = useState(null);
++
++  // P4: show the user's current total points, updated live.
++  useEffect(() => {
++    if (!authUser) return undefined;
++    return onSnapshot(
++      doc(db, COLLECTIONS.users, authUser.uid),
++      (snap) => setTotalPoints(snap.exists() ? Number(snap.data().totalPoints) || 0 : 0),
++      () => setTotalPoints(null),
++    );
++  }, [authUser]);
+ 
+   async function handleSignOut() {
+     try {
+@@ -24,6 +39,8 @@ export default function Account() {
+         <dd>{user.name}</dd>
+         <dt>UW email</dt>
+         <dd>{user.uwEmail}</dd>
++        <dt>Total points</dt>
++        <dd>{totalPoints === null ? 'Loading...' : totalPoints}</dd>
+       </dl>
+       <button type="button" className="account-sign-out" onClick={handleSignOut}>
+         Sign Out
+diff --git a/src/pages/OngoingBorrowing.jsx b/src/pages/OngoingBorrowing.jsx
+index ae9030a..0cae43a 100644
+--- a/src/pages/OngoingBorrowing.jsx
++++ b/src/pages/OngoingBorrowing.jsx
+@@ -103,11 +103,35 @@ export default function OngoingBorrowing() {
+     }
+   }
+ 
++  // S6.8 / G4.10: if the pickup can't be saved (offline or too slow),
++  // stop showing "Saving..." and tell the user. The stage stays unchanged.
+   async function markPickedUp() {
+-    setBusy(true);
+     setError('');
++    if (!navigator.onLine) {
++      setError('Pickup could not be confirmed. Please check your connection and try again.');
++      return;
++    }
++    setBusy(true);
++
++    const save = { aborted: false, committing: false };
++    const saving = confirmSellGivePickup(requestId, user.uid, save);
++    saving.catch(() => {});
++    let timer;
++    const timedOut = new Promise((resolve) => {
++      timer = setTimeout(() => resolve('timeout'), 15000);
++    });
++
+     try {
+-      await confirmSellGivePickup(requestId, user.uid);
++      const result = await Promise.race([saving, timedOut]);
++      if (result === 'timeout') {
++        save.aborted = true;
++        // If the write was already sent, wait for its real result
++        // so we never show an error for a pickup that was saved.
++        if (!save.committing) {
++          throw new Error('Please check your connection and try again.');
++        }
++        await saving;
++      }
+       if (type === LISTING_TYPES.give) {
+         navigate(`${base}/complete`, { replace: true });
+       } else {
+@@ -116,6 +140,7 @@ export default function OngoingBorrowing() {
+     } catch (cause) {
+       setError(`Pickup could not be confirmed. ${cause.message || 'Please try again.'}`);
+     } finally {
++      clearTimeout(timer);
+       setBusy(false);
+     }
+   }
+diff --git a/src/pages/ReturnComplete.jsx b/src/pages/ReturnComplete.jsx
+index 30f2ad8..f7af02c 100644
+--- a/src/pages/ReturnComplete.jsx
++++ b/src/pages/ReturnComplete.jsx
+@@ -81,6 +81,9 @@ export default function ReturnComplete() {
+           {isGive ? (
+             <>
+               <p>The item has been picked up. Thank you for giving it away!</p>
++              {isLender && (
++                <p><strong>Points earned:</strong> {pointsRecorded ? '+15 points' : 'Processing points...'}</p>
++              )}
+               <p><strong>Your total points:</strong> {completion.totalPoints}</p>
+             </>
+           ) : (
+diff --git a/tests/firestore.rules.test.js b/tests/firestore.rules.test.js
+index ca96a05..5da8464 100644
+--- a/tests/firestore.rules.test.js
++++ b/tests/firestore.rules.test.js
+@@ -508,3 +508,72 @@ test('lender cannot reactivate an On Loan listing before receiving the return',
+     status: 'Active', approvedRequestId: null,
+   }));
+ });
++
++// #22 Points system: G5.1–G5.2, P1–P3.
++test('giveaway pickup awards the giver 15 points exactly once', async () => {
++  const requestId = 'item-1_requester-1';
++  await testEnv.withSecurityRulesDisabled(async context => {
++    const db = context.firestore();
++    await setDoc(doc(db, 'requests/' + requestId), {
++      listingId: 'item-1', listingType: 'give', ownerId: 'owner-1',
++      requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
++    });
++    await setDoc(doc(db, 'users/owner-1'), { totalPoints: 7 });
++  });
++  const giver = uwContext('owner-1');
++  const record = (points) => ({
++    requestId, userId: 'owner-1', points,
++    reason: 'Completed giveaway transaction', createdAt: new Date(),
++  });
++
++  // Pickup without the points is refused.
++  await assertFails(updateDoc(doc(giver, 'requests/' + requestId), { stage: 'Pickup' }));
++
++  // Wrong amount is refused.
++  const wrong = writeBatch(giver);
++  wrong.update(doc(giver, 'requests/' + requestId), { stage: 'Pickup' });
++  wrong.update(doc(giver, 'users/owner-1'), { totalPoints: 107, lastPointsRequestId: requestId });
++  wrong.set(doc(giver, 'pointsRecords/' + requestId + '_owner-1'), record(100));
++  await assertFails(wrong.commit());
++
++  // The recipient cannot be awarded giveaway points.
++  const recipientAward = writeBatch(giver);
++  recipientAward.update(doc(giver, 'requests/' + requestId), { stage: 'Pickup' });
++  recipientAward.set(doc(giver, 'pointsRecords/' + requestId + '_requester-1'), {
++    ...record(15), userId: 'requester-1',
++  });
++  await assertFails(recipientAward.commit());
++
++  const pickup = writeBatch(giver);
++  pickup.update(doc(giver, 'requests/' + requestId), { stage: 'Pickup' });
++  pickup.update(doc(giver, 'users/owner-1'), { totalPoints: 22, lastPointsRequestId: requestId });
++  pickup.set(doc(giver, 'pointsRecords/' + requestId + '_owner-1'), record(15));
++  await assertSucceeds(pickup.commit());
++
++  const user = await getDoc(doc(giver, 'users/owner-1'));
++  if (user.data().totalPoints !== 22) throw new Error('Giver did not get 15 points.');
++
++  // No second award for the same transaction.
++  await assertFails(updateDoc(doc(giver, 'users/owner-1'), { totalPoints: 37, lastPointsRequestId: requestId }));
++});
++
++test('sell pickup still works without points', async () => {
++  const requestId = 'item-1_requester-1';
++  await testEnv.withSecurityRulesDisabled(async context => {
++    await setDoc(doc(context.firestore(), 'requests/' + requestId), {
++      listingId: 'item-1', listingType: 'sell', ownerId: 'owner-1',
++      requesterId: 'requester-1', status: 'Approved', stage: 'Approved',
++    });
++  });
++  const buyer = uwContext('requester-1');
++  await assertSucceeds(updateDoc(doc(buyer, 'requests/' + requestId), { stage: 'Pickup' }));
++});
++
++test('users can create only their own profile, starting at 0 points', async () => {
++  const me = uwContext('requester-1');
++  await assertFails(setDoc(doc(me, 'users/owner-1'), { name: 'X', totalPoints: 0 }));
++  await assertFails(setDoc(doc(me, 'users/requester-1'), { name: 'Me', totalPoints: 50 }));
++  await assertSucceeds(setDoc(doc(me, 'users/requester-1'), {
++    name: 'Me', uwEmail: 'requester-1@uw.edu', totalPoints: 0, createdAt: new Date(),
++  }));
++});
