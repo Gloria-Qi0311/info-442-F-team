@@ -6,6 +6,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { COLLECTIONS } from '../data/schema';
 import './ItemDetails.css';
+import { saveWithTimeout, userMessage } from '../data/saveWithTimeout';
 
 export default function ReturnComplete() {
   const { role, requestId } = useParams();
@@ -32,7 +33,7 @@ export default function ReturnComplete() {
         if (isGive !== (result.request.listingType === 'give')) throw new Error('Wrong transaction type.');
         if (active) setCompletion(result);
       } catch (cause) {
-        if (active) setError(cause.message || 'Could not load completion.');
+        if (active) setError(userMessage(cause, 'Could not load this page. Please refresh and try again.'));
       } finally {
         if (active) setLoading(false);
       }
@@ -57,18 +58,7 @@ export default function ReturnComplete() {
     return () => { unsubscribeRecord(); unsubscribeUser(); };
   }, [requestId, user]);
 
-  // R11: an offline save never finishes, so fail right away when offline
-  // and stop waiting after 15 seconds.
-  function saveWithTimeout(save) {
-    if (!navigator.onLine) return Promise.reject(new Error('You are offline.'));
-    const saving = save();
-    saving.catch(() => {});
-    let timer;
-    const timedOut = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('Saving timed out. Refresh the page before trying again.')), 15000);
-    });
-    return Promise.race([saving, timedOut]).finally(() => clearTimeout(timer));
-  }
+  // R11: saveWithTimeout fails right away when offline and stops waiting after 15 seconds.
 
   async function submit(event) {
     event.preventDefault();
@@ -82,11 +72,10 @@ export default function ReturnComplete() {
     } catch (cause) {
       // R11: say clearly that the rating was not saved. Our own messages
       // (like "Please select a star rating.") are shown as they are.
-      const networkProblem = cause.code || !cause.message
-        || cause.message === 'You are offline.' || cause.message.startsWith('Saving timed out');
-      setError(networkProblem
-        ? 'Your rating could not be saved. Check your connection and try again.'
-        : cause.message);
+      const networkProblem = cause.message === 'You are offline.'
+        || String(cause.message).startsWith('Saving timed out');
+      const fallback = 'Your rating could not be saved. Check your connection and try again.';
+      setError(networkProblem ? fallback : userMessage(cause, fallback));
     } finally {
       setBusy(false);
     }

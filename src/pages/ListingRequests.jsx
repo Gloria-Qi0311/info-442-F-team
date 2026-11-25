@@ -7,6 +7,7 @@ import { LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import { decideItemRequest, reconcilePendingRequests } from '../data/requestDecisions';
 import { getRequesterRatingSummary } from '../data/requestRatings';
 import './ItemDetails.css';
+import { userMessage } from '../data/saveWithTimeout';
 
 // Issue #14: sellers (S3) and givers (G3) see the requests for one of their listings.
 // Approving and declining requests is added in Issue #16.
@@ -109,7 +110,7 @@ export default function ListingRequests() {
         navigate(`/transactions/${OWNER_ROLE[type]}/${request.id}`);
       }
     } catch (cause) {
-      setActionError(cause.message || 'Could not update request. Please try again.');
+      setActionError(userMessage(cause, 'Could not update this request. Check your connection and try again.'));
     } finally {
       setBusyId('');
     }
