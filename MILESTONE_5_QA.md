@@ -1,5 +1,10 @@
 # Milestone 5 – QA Testing Report
 
+> **Superseded.** The blocking findings in this report (BUG-1, BUG-4) were fixed in PR #69 and verified
+> on `main` @ `b3c13b1`. For the current state of this milestone see `SPRINT_2_REGRESSION_QA.md`,
+> which retests Milestones 4-6 in full. The report below is kept as the record of what was found at the time.
+
+
 **Project:** Husky Share – INFO 442
 **Tester:** Jessie Zhuang (Product Designer)
 **Test Date:** November 23, 2026
