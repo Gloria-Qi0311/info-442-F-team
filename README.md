@@ -44,3 +44,42 @@ See [SETUP.md](SETUP.md) for how to run the app and connect Firebase.
 
 ## Testing Plan
 [Testing Plan (Notion)](https://app.notion.com/p/Testing-Plan-414154ba9265809089b9eef529f0b687?source=copy_link)
+
+## Quality
+
+### Accessibility
+
+We used semantic HTML, including headings, navigation, and native
+buttons and form controls. Form fields have labels, and validation
+messages explain which information is missing or invalid. Item
+photos also have descriptive alternative text.
+
+Request statuses and transaction stages are shown in text, so users
+do not have to rely on color alone to understand their progress.
+These choices follow the accessibility topics discussed in class,
+especially text alternatives and input assistance.
+
+### Security
+
+Husky Share uses Firebase Authentication and Firestore Security
+Rules to limit data access to users with verified UW email
+addresses. The rules also check ownership and transaction roles:
+only listing owners can approve requests, and only participants
+can access their transactions.
+
+We display users' names without showing their UW email addresses
+to other users. Related transaction updates are saved together,
+and points cannot be awarded twice for the same transaction.
+We tested these protections locally with Firebase Emulators,
+including unauthorized access and delayed submissions.
+
+### Responsiveness
+
+We used responsive layouts for the map, forms, listings, and
+transaction pages. We checked 16 representative page templates
+at six widths between 375px and 1440px. None of these checks
+showed horizontal scrolling.
+
+These checks cover the page states we tested. Further
+accessibility testing with Lighthouse, WAVE, and VoiceOver
+is still needed.
