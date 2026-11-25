@@ -10,6 +10,23 @@ service cloud.firestore {
         && request.auth.token.email.matches('.*@uw[.]edu$');
     }
 
+    function readyListing(data) {
+      return data.get('requestSchemaVersion', 0) == 2
+        && data.approvalEpoch is int && data.approvalEpoch >= 0;
+    }
+    function isPending(data) {
+      let listing = get(/databases/$(database)/documents/listings/$(data.listingId)).data;
+      return readyListing(listing) && !('status' in data)
+        && data.requestEpoch is int && data.requestEpoch == listing.approvalEpoch;
+    }
+    function validOpenRequest(data) {
+      return isPending(data)
+        && data.get('stage', null) == null
+        && data.get('viewedByOwner', false) == false
+        && getAfter(/databases/$(database)/documents/listings/$(data.listingId)).data.approvalEpoch
+          == data.requestEpoch;
+    }
+
     // Setup check used by Issue 1.1. Keep test data behind UW verification.
     match /healthChecks/{id} {
       allow read: if isUwUser();
@@ -66,7 +83,11 @@ service cloud.firestore {
 
     match /listings/{id} {
       allow read: if isUwUser();
-      allow create: if isUwUser() && request.resource.data.ownerId == request.auth.uid;
+      allow create: if isUwUser() && request.resource.data.ownerId == request.auth.uid
+        && readyListing(request.resource.data) && request.resource.data.approvalEpoch == 0
+        && request.resource.data.status == 'Active'
+        && request.resource.data.get('approvedRequestId', null) == null
+        && request.resource.data.get('requestVersion', 0) == 0;
       // Listing approval must be paired with a matching request transition.
       allow update: if isUwUser() && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == resource.data.ownerId
@@ -85,7 +106,7 @@ service cloud.firestore {
         && request.resource.data.requestVersion == (('requestVersion' in resource.data && resource.data.requestVersion is int) ? resource.data.requestVersion : 0) + 1
         && (!exists(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid))
           || get(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.status == 'Canceled')
-        && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.status == 'Pending'
+        && validOpenRequest(getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data)
         && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.listingId == id
         && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.requesterId == request.auth.uid
         && getAfter(/databases/$(database)/documents/requests/$(id + '_' + request.auth.uid)).data.ownerId == resource.data.ownerId;
@@ -96,14 +117,15 @@ service cloud.firestore {
           : resource.data.type == 'sell' ? 'Sold'
           : resource.data.type == 'give' ? 'Given Away' : 'Invalid')
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'approvedRequestId'])
+          .hasOnly(['status', 'approvedRequestId', 'approvalEpoch'])
+        && readyListing(resource.data)
+        && request.resource.data.approvalEpoch == resource.data.approvalEpoch + 1
         && request.resource.data.approvedRequestId is string
         && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.status
           == 'Approved'
         && getAfter(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.listingId
           == id
-        && get(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data.status
-          == 'Pending';
+        && isPending(get(/databases/$(database)/documents/requests/$(request.resource.data.approvedRequestId)).data);
       // LS6: returning a loan reactivates its listing in the same atomic write.
       allow update: if isUwUser()
         && resource.data.type == 'lend'
@@ -117,7 +139,9 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.stage == 'Received'
         && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.listingId == id
         && getAfter(/databases/$(database)/documents/requests/$(resource.data.approvedRequestId)).data.ownerId == request.auth.uid;
-      allow delete: if isUwUser() && resource.data.ownerId == request.auth.uid;
+      // Preserve epochs: deleting/recreating a listing could revive declined requests.
+      // The application uses Inactive, and has no listing deletion flow.
+      allow delete: if false;
       // LS9: any UW user may only flip an expired Active listing to Inactive.
       // availableUntil ends at Seattle midnight (UTC-8/-7); +8h keeps it from expiring early.
       allow update: if isUwUser()
@@ -178,7 +202,7 @@ service cloud.firestore {
       allow create: if isUwUser()
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.ownerId != request.auth.uid
-        && request.resource.data.status == 'Pending'
+        && validOpenRequest(request.resource.data)
         && validBorrowDetails(request.resource.data)
         && id == request.resource.data.listingId + '_' + request.auth.uid
         && exists(/databases/$(database)/documents/listings/$(request.resource.data.listingId))
@@ -197,14 +221,14 @@ service cloud.firestore {
 
       allow update: if isUwUser() && (
         (isRequester()
-          && resource.data.status == 'Pending'
+          && isPending(resource.data)
           && request.resource.data.status == 'Canceled'
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'cancelledAt']))
         ||
         (isRequester()
           && resource.data.status == 'Canceled'
-          && request.resource.data.status == 'Pending'
+          && validOpenRequest(request.resource.data)
           && validBorrowDetails(request.resource.data)
           && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
           && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
@@ -213,26 +237,31 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion is int)
               ? get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.requestVersion : 0) + 1
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['status', 'stage', 'viewedByOwner', 'createdAt',
+            .hasOnly(['status', 'requestEpoch', 'stage', 'viewedByOwner', 'createdAt',
                       'startDate', 'endDate', 'pickupPreference', 'purpose',
                       'requesterName', 'listingTitle', 'cancelledAt']))
         ||
         (isListingOwner()
-          && resource.data.status == 'Pending'
+          && isPending(resource.data)
           && request.resource.data.status in ['Approved', 'Declined']
           && sameIdentity()
           && (request.resource.data.status == 'Declined'
             || (
-              get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
+              request.resource.data.pickupDate is string && request.resource.data.pickupDate.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+              && request.resource.data.pickupTime is string && request.resource.data.pickupTime.matches('([01][0-9]|2[0-3]):[0-5][0-9]')
+              && request.resource.data.pickupLocation is string && request.resource.data.pickupLocation.trim().size() > 0
+              && request.resource.data.get('stage', 'Approved') == 'Approved'
+              && get(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status == 'Active'
               && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.status
                 == (resource.data.listingType == 'lend' ? 'On Loan'
                   : resource.data.listingType == 'sell' ? 'Sold'
                   : resource.data.listingType == 'give' ? 'Given Away' : 'Invalid')
               && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvedRequestId == id
+              && getAfter(/databases/$(database)/documents/listings/$(resource.data.listingId)).data.approvalEpoch == resource.data.requestEpoch + 1
             )))
         ||
         (isListingOwner()
-          && request.resource.data.status == resource.data.status
+          && request.resource.data.get('status', null) == resource.data.get('status', null)
           && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['viewedByOwner']))
         ||

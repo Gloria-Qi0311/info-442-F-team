@@ -1,3 +1,5 @@
+> Historical QA record. The LS4 limitation described below is superseded by [the approval-epoch migration](LS4-security-limitation.md); unrelated historical findings are not reclassified by this fix.
+
 # PR #69 Spark follow-up
 
 Firebase Console inspection on 2026-11-23 confirmed `info442-husky-share`, the default Firestore database in `nam5`, and Spark ($0/month). The Data panel listed healthChecks, listings, pickupAreas and requests; no ratings collection was shown at inspection time. The published Rules history showed a latest version at 11:30 PM. No production data, rules or billing settings were changed during this work.

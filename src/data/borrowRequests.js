@@ -1,7 +1,8 @@
 import { deleteField, doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { COLLECTIONS, LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from './schema';
-import { requestIdFor } from './requests';
+import { requestStatus, requireRequestSchema } from './requestStatus.js';
+import { requestIdFor, hydrateRequest } from './requests';
 import { isPastAvailability } from './listings';
 
 export async function sendBorrowRequest(listingId, user, values) {
@@ -28,21 +29,21 @@ export async function sendBorrowRequest(listingId, user, values) {
     const existing = await tx.get(requestRef);
     if (!listingSnap.exists()) throw new Error('Item not found.');
     const listing = listingSnap.data();
+    requireRequestSchema(listing);
     if (listing.type !== LISTING_TYPES.lend) throw new Error('This item cannot be borrowed.');
     if (listing.ownerId === user.uid) throw new Error('You cannot borrow your own item.');
     if (listing.status !== LISTING_STATUS.active || isPastAvailability(listing)) throw new Error('Item is unavailable.');
     if ((listing.availableFrom && values.startDate < listing.availableFrom) || (listing.availableUntil && values.endDate > listing.availableUntil)) {
       throw new Error('Choose dates within the item availability period.');
     }
-    if (existing.exists() && [REQUEST_STATUS.pending, REQUEST_STATUS.approved].includes(existing.data().status)) {
+    if (existing.exists() && [REQUEST_STATUS.pending, REQUEST_STATUS.approved].includes(requestStatus(existing.data(), listing))) {
       throw new Error('You already have a request for this item.');
     }
-    if (existing.exists() && existing.data().status === REQUEST_STATUS.declined) {
+    if (existing.exists() && requestStatus(existing.data(), listing) === REQUEST_STATUS.declined) {
       throw new Error('Your previous request was declined.');
     }
     // Keep a listing-level version in sync with every new pending request.
-    // The owner approval flow checks this version to catch requests submitted
-    // while it is collecting the pending request documents.
+    // Rules pair this version change with the matching request creation.
     tx.update(listingRef, {
       requestVersion: (Number(listing.requestVersion) || 0) + 1,
     });
@@ -50,13 +51,13 @@ export async function sendBorrowRequest(listingId, user, values) {
       listingId, listingType: LISTING_TYPES.lend,
       listingTitle: listing.title, ownerId: listing.ownerId,
       requesterId: user.uid, requesterName: user.displayName || 'UW Student',
-      status: REQUEST_STATUS.pending, stage: null, viewedByOwner: false,
+      requestEpoch: listing.approvalEpoch, stage: null, viewedByOwner: false,
       startDate: values.startDate, endDate: values.endDate,
       pickupPreference: values.pickupPreference.trim(), purpose: values.purpose.trim(),
       createdAt: serverTimestamp(),
     };
     if (existing.exists()) {
-      tx.update(requestRef, { ...requestData, cancelledAt: deleteField() });
+      tx.update(requestRef, { ...requestData, status: deleteField(), cancelledAt: deleteField() });
     } else {
       tx.set(requestRef, requestData);
     }
@@ -66,5 +67,5 @@ export async function sendBorrowRequest(listingId, user, values) {
 
 export async function getBorrowRequest(listingId, uid) {
   const snap = await getDoc(doc(db, COLLECTIONS.requests, requestIdFor(listingId, uid)));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  return snap.exists() ? hydrateRequest({ id: snap.id, ...snap.data() }) : null;
 }

@@ -1,3 +1,5 @@
+> Historical QA record. The LS4 limitation described below is superseded by [the approval-epoch migration](LS4-security-limitation.md); unrelated historical findings are not reclassified by this fix.
+
 # @lwang45 — Sprint 1/2 QA follow-up
 
 - **#13 / B4.8**: cancellation now has a clear failure message and offline/timeout protection in BorrowRequestStatus and ItemDetails. The UI waits for a confirmed result; a timeout is ambiguous and requires refreshing before retrying.

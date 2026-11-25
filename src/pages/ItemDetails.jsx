@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { getListing, isPastAvailability } from '../data/listings';
 import { pickupAreaName } from '../data/listingOptions';
 import { usePickupAreas } from '../data/pickupAreas';
-import { cancelItemRequest, getMyRequest, sendItemRequest } from '../data/requests';
+import { cancelItemRequest, watchRequest, requestIdFor, sendItemRequest } from '../data/requests';
 import { LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
 import { saveWithTimeout, userMessage } from '../data/saveWithTimeout';
@@ -57,26 +57,21 @@ function RequestPanel({ listing, available }) {
   const isOwner = Boolean(user) && listing.ownerId === user.uid;
 
   useEffect(() => {
-    let active = true;
     setRequest(null);
     setError('');
     if (!user || isOwner) {
       setLoading(false);
-      return () => { active = false; };
+      return undefined;
     }
     setLoading(true);
-    getMyRequest(listing.id, user.uid)
-      .then((result) => {
-        if (active) setRequest(result);
-      })
-      .catch((cause) => {
-        console.error('Could not load your request:', cause);
-        if (active) setError('Could not load your request status. Please refresh the page.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
+    return watchRequest(requestIdFor(listing.id, user.uid), result => {
+      setRequest(result);
+      setLoading(false);
+    }, cause => {
+      console.error('Could not load your request:', cause);
+      setError('Could not load your request status. Please refresh the page.');
+      setLoading(false);
+    });
   }, [listing.id, user, isOwner]);
 
   async function handleSend() {

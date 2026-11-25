@@ -37,8 +37,10 @@ jobs:
           printf '%s' "$SA" > "$credential_file"
           export GOOGLE_APPLICATION_CREDENTIALS="$credential_file"
           node scripts/backfill-rating-summaries.js
+          node scripts/migrate-request-epochs.js
           npx --no-install firebase deploy --only firestore:rules --project info442-husky-share --non-interactive
           node scripts/backfill-rating-summaries.js --apply
+          node scripts/migrate-request-epochs.js --apply
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

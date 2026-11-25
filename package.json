@@ -10,8 +10,8 @@
     "lint": "eslint .",
     "emulators": "firebase emulators:start --only firestore,auth,storage",
     "test:db": "node scripts/db-check.js",
-    "test:unit": "node --test tests/availability.test.js",
-    "test:rules": "node --test tests/firestore.rules.test.js",
+    "test:unit": "node --test tests/availability.test.js tests/requestStatus.test.js",
+    "test:rules": "node --test --test-concurrency=1 tests/firestore.rules.test.js tests/requestClient.test.js",
     "seed:pickup-areas": "node scripts/seed-pickup-areas.js"
   },
   "dependencies": {
