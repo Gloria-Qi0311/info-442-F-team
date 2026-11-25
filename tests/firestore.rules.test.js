@@ -1013,3 +1013,16 @@ test('legacy epoch migration is dry-run safe, repairs old stragglers and resumes
     equal((await migrateRequestEpochs(db, { apply: true })).listings, 0);
   } finally { await deleteApp(app); }
 });
+
+
+test('migration preserves an empty legacy Unavailable listing without inventing a winner', async () => {
+  const app = initializeAdminApp({ projectId }, 'empty-legacy');
+  try {
+    const db = getFirestore(app);
+    await db.doc('listings/empty-legacy').set({ OwnerId: 'owner-1', type: 'give', status: 'Unavailable', title: 'Old seed' });
+    await migrateRequestEpochs(db, { apply: true });
+    const item = (await db.doc('listings/empty-legacy').get()).data();
+    equal(item.status, 'Unavailable'); equal(item.approvalEpoch, 0);
+    equal(item.requestSchemaVersion, 2); equal('approvedRequestId' in item, false);
+  } finally { await deleteApp(app); }
+});

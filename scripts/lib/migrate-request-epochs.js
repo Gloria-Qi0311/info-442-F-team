@@ -21,7 +21,9 @@ export async function migrateRequestEpochs(db, { apply = false } = {}) {
       if (rows.some(row => row.data().status === 'Pending')) throw new Error(`Legacy Pending on migrated listing: ${item.id}`);
       continue;
     }
-    const closed = ['On Loan', 'Sold', 'Given Away', 'Unavailable'].includes(listing.status);
+    // Old seed data may contain Unavailable listings with no requests at all.
+    // Preserve these as unavailable; there is no pending decision to migrate.
+    const closed = rows.length > 0 && ['On Loan', 'Sold', 'Given Away', 'Unavailable'].includes(listing.status);
     if (closed) {
       const winner = rows.find(row => row.id === listing.approvedRequestId)?.data();
       if (!winner || winner.status !== 'Approved') throw new Error(`Closed listing has no valid winner: ${item.id}`);

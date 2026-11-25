@@ -23,7 +23,7 @@ Approval always writes two documents, independent of rival count. It needs no Cl
 
 Deployment order: preflight → new rules → `--apply` migration → new Hosting app. Legacy request creation and decisions are blocked by the new rules until each listing receives `requestSchemaVersion: 2`. Terminal transactions and H4 remain available. A brief request-maintenance window is expected; old open browser tabs must refresh after deployment.
 
-Migration removes legacy Pending fields and sets requestEpoch 0. An already-approved listing starts at epoch 1, repairing old Pending stragglers; an unapproved listing starts at 0. Existing Approved/Canceled/Declined decisions, identity, pickup details and viewed flags are preserved. Per-request transactions make large migrations resumable without a batch-size limit. A listing is marked ready only after its requests are converted. Re-running skips ready listings. Never run the apply step before deploying the new rules, and do not roll back to the old rules/client after migration.
+Migration removes legacy Pending fields and sets requestEpoch 0. An empty legacy Unavailable listing is preserved without inventing a winner. An already-approved listing with requests starts at epoch 1, repairing old Pending stragglers; an unapproved listing starts at 0. Existing Approved/Canceled/Declined decisions, identity, pickup details and viewed flags are preserved. Per-request transactions make large migrations resumable without a batch-size limit. A listing is marked ready only after its requests are converted. Re-running skips ready listings. Never run the apply step before deploying the new rules, and do not roll back to the old rules/client after migration.
 
 ## Verification scope
 
