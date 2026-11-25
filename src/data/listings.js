@@ -39,6 +39,7 @@ export async function createListing(type, values, owner, photoUrl, listingId, sa
     timeSlot: values.timeSlot,
     photoUrl,
     status: LISTING_STATUS.active,
+    requestSchemaVersion: 2, approvalEpoch: 0,
     createdAt: serverTimestamp(),
   };
   if (type === 'sell') {

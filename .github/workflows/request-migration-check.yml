@@ -1,0 +1,36 @@
+name: Request migration preflight
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/**migrate-request-epochs.js'
+      - 'scripts/lib/migrate-request-epochs.js'
+      - 'firestore.rules'
+      - '.github/workflows/request-migration-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate existing data without writing
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GCLOUD_PROJECT: info442-husky-share
+        run: |
+          test -n "$SA"
+          umask 077
+          credential_file="$RUNNER_TEMP/migration-preflight.json"
+          trap 'rm -f "$credential_file"' EXIT
+          printf '%s' "$SA" > "$credential_file"
+          export GOOGLE_APPLICATION_CREDENTIALS="$credential_file"
+          node scripts/migrate-request-epochs.js

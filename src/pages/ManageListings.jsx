@@ -1,3 +1,4 @@
+import { requestStatus } from '../data/requestStatus.js';
 
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -139,13 +140,14 @@ export default function ManageListings() {
           const requestsSnapshot = await getDocs(
             query(
               collection(db, COLLECTIONS.requests),
-              where('ownerId', '==', user.uid),
-              where('status', '==', REQUEST_STATUS.pending)
+              where('ownerId', '==', user.uid)
             )
           );
           const counts = {};
           requestsSnapshot.forEach((entry) => {
             const listingId = entry.data().listingId;
+            const listing = records.find(item => item.id === listingId);
+            if (!listing || requestStatus(entry.data(), listing) !== REQUEST_STATUS.pending) return;
             counts[listingId] = (counts[listingId] || 0) + 1;
           });
           if (active) setPendingCounts(counts);

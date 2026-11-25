@@ -11,6 +11,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
+import { withRequestStatus, requireRequestSchema } from './requestStatus.js';
 import { db } from '../firebase';
 import { isPastAvailability } from './listings.js';
 import { COLLECTIONS, LISTING_STATUS, LISTING_TYPES, REQUEST_STATUS } from './schema.js';
@@ -28,7 +29,7 @@ export function requestIdFor(listingId, requesterId) {
 export async function getMyRequest(listingId, requesterId) {
   const snap = await getDoc(doc(db, COLLECTIONS.requests, requestIdFor(listingId, requesterId)));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() };
+  return hydrateRequest({ id: snap.id, ...snap.data() });
 }
 
 // S5 / G6: "I want it". Creates a Pending request for a Sell or Give listing.
@@ -44,6 +45,7 @@ export async function sendItemRequest(listingId, requester) {
       throw new Error('This item could not be found.');
     }
     const listing = listingSnap.data();
+    requireRequestSchema(listing);
 
     if (listing.type !== LISTING_TYPES.sell && listing.type !== LISTING_TYPES.give) {
       throw new Error('Requests for this type of item are not available here.');
@@ -57,7 +59,7 @@ export async function sendItemRequest(listingId, requester) {
 
     const existingSnap = await transaction.get(requestRef);
     if (existingSnap.exists()) {
-      const existing = existingSnap.data();
+      const existing = withRequestStatus(existingSnap.data(), listing);
       if (existing.status === REQUEST_STATUS.pending || existing.status === REQUEST_STATUS.approved) {
         // Already sent: nothing new to save.
         return { id: existingSnap.id, ...existing };
@@ -69,8 +71,7 @@ export async function sendItemRequest(listingId, requester) {
     }
 
     // Increment a listing-level version in the same transaction as the request.
-    // Approval uses this value to detect requests created while it is preparing
-    // the list of pending requests.
+    // Rules pair this version change with the matching request creation.
     transaction.update(listingRef, {
       requestVersion: (Number(listing.requestVersion) || 0) + 1,
     });
@@ -82,17 +83,17 @@ export async function sendItemRequest(listingId, requester) {
       ownerId: listing.ownerId,
       requesterId: requester.uid,
       requesterName: requester.displayName || 'UW Student',
-      status: REQUEST_STATUS.pending,
+      requestEpoch: listing.approvalEpoch,
       stage: null,
       viewedByOwner: false,
       createdAt: serverTimestamp(),
     };
     if (existingSnap.exists()) {
-      transaction.update(requestRef, { ...request, cancelledAt: deleteField() });
+      transaction.update(requestRef, { ...request, status: deleteField(), cancelledAt: deleteField() });
     } else {
       transaction.set(requestRef, request);
     }
-    return { id: requestRef.id, ...request };
+    return withRequestStatus({ id: requestRef.id, ...request }, listing);
   });
 }
 
@@ -105,7 +106,10 @@ export async function cancelItemRequest(requestId, requesterId) {
     if (!snap.exists()) {
       throw new Error('This request could not be found.');
     }
-    const request = snap.data();
+    const raw = snap.data();
+    const listing = await transaction.get(doc(db, COLLECTIONS.listings, raw.listingId));
+    requireRequestSchema(listing.data());
+    const request = withRequestStatus(raw, listing.data());
     if (request.requesterId !== requesterId) {
       throw new Error('You can only cancel your own requests.');
     }
@@ -127,22 +131,34 @@ export async function getRequestsForListing(listingId, ownerId) {
     where('ownerId', '==', ownerId),
     where('listingId', '==', listingId),
   ));
-  const requests = snap.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+  const requests = await Promise.all(snap.docs.map((entry) => hydrateRequest({ id: entry.id, ...entry.data() })));
   requests.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
   return requests;
 }
 
 // Live owner request list: cancellation and approval appear without a refresh.
 export function watchRequestsForListing(listingId, ownerId, onChange, onError) {
-  return onSnapshot(query(
-    collection(db, COLLECTIONS.requests),
-    where('ownerId', '==', ownerId),
-    where('listingId', '==', listingId),
-  ), snapshot => {
-    const requests = snapshot.docs.map(entry => ({ id: entry.id, ...entry.data() }));
-    requests.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
-    onChange(requests);
+  let rows;
+  let listing;
+  const emit = () => {
+    if (!rows || !listing) return;
+    try {
+      const requests = rows.map(row => withRequestStatus(row, listing));
+      requests.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
+      onChange(requests);
+    } catch (error) { onError?.(error); }
+  };
+  const stopListing = onSnapshot(doc(db, COLLECTIONS.listings, listingId), { includeMetadataChanges: true }, snapshot => {
+    if (snapshot.metadata.hasPendingWrites) return;
+    listing = snapshot.data(); emit();
   }, onError);
+  const stopRequests = onSnapshot(query(collection(db, COLLECTIONS.requests),
+    where('ownerId', '==', ownerId), where('listingId', '==', listingId)), { includeMetadataChanges: true }, snapshot => {
+    if (snapshot.metadata.hasPendingWrites) return;
+    rows = snapshot.docs.map(entry => ({ id: entry.id, ...entry.data() })); emit();
+  }, onError);
+  return () => { stopListing(); stopRequests(); };
+
 }
 
 // Marks the owner's unviewed requests as viewed once they open the request list,
@@ -162,7 +178,7 @@ export async function getMySentRequests(requesterId) {
     collection(db, COLLECTIONS.requests),
     where('requesterId', '==', requesterId),
   ));
-  const requests = snap.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+  const requests = await Promise.all(snap.docs.map((entry) => hydrateRequest({ id: entry.id, ...entry.data() })));
   requests.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt));
   return requests;
 }
@@ -187,4 +203,38 @@ export function watchUnviewedRequestCount(ownerId, onCount) {
 function timeOf(value) {
   if (value && typeof value.toMillis === 'function') return value.toMillis();
   return 0;
+}
+
+export async function hydrateRequest(request) {
+  if (request.status) return request;
+  const listing = await getDoc(doc(db, COLLECTIONS.listings, request.listingId));
+  return withRequestStatus(request, listing.data());
+}
+
+export function watchRequest(requestId, onChange, onError) {
+  let row;
+  let listing;
+  let stopListing = () => {};
+  let listingId;
+  const emit = () => {
+    if (!row) return onChange(null);
+    if (row.status || listing) {
+      try { onChange(withRequestStatus(row, listing)); }
+      catch (error) { onError?.(error); }
+    }
+  };
+  const stopRequest = onSnapshot(doc(db, COLLECTIONS.requests, requestId),
+    { includeMetadataChanges: true }, snapshot => {
+      if (snapshot.metadata.hasPendingWrites) return;
+      row = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+      if (row && row.listingId !== listingId) {
+        stopListing(); listing = undefined; listingId = row.listingId;
+        stopListing = onSnapshot(doc(db, COLLECTIONS.listings, listingId), { includeMetadataChanges: true }, snap => {
+          if (snap.metadata.hasPendingWrites) return;
+          listing = snap.data(); emit();
+        }, onError);
+      }
+      emit();
+    }, onError);
+  return () => { stopRequest(); stopListing(); };
 }

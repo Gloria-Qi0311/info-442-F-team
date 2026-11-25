@@ -1,3 +1,4 @@
+import { watchRequest } from '../data/requests.js';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -52,8 +53,8 @@ export default function OngoingBorrowing() {
 
   useEffect(() => {
     if (!user || !requestId) return undefined;
-    return onSnapshot(doc(db, COLLECTIONS.requests, requestId), snap => {
-      setRequest(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    return watchRequest(requestId, row => {
+      setRequest(row);
       setLoading(false);
     }, () => {
       setError('Could not load the transaction. Please try again.');

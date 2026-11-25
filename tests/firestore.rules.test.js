@@ -1,3 +1,6 @@
+import { decideItemRequestInDatabase } from '../src/data/requestDecisionsCore.js';
+import { migrateRequestEpochs } from '../scripts/lib/migrate-request-epochs.js';
+import { requestStatus } from '../src/data/requestStatus.js';
 import { initializeApp as initializeAdminApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { expireListings } from '../scripts/lib/expire-listings.js';
@@ -8,8 +11,8 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
-import { rejects, equal } from 'node:assert/strict';
+import { doc, getDoc, setDoc, updateDoc, writeBatch, deleteField, runTransaction, deleteDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { rejects, equal, deepEqual } from 'node:assert/strict';
 import { saveWithTimeout } from '../src/data/saveWithTimeout.js';
 
 const projectId = 'demo-husky-share';
@@ -18,7 +21,7 @@ let testEnv;
 const listing = {
   ownerId: 'owner-1',
   type: 'lend',
-  status: 'Active',
+  status: 'Active', requestSchemaVersion: 2, approvalEpoch: 0,
   title: 'Test item',
   availableFrom: '2026-11-01',
   availableUntil: '2026-12-31',
@@ -59,7 +62,7 @@ test('verified UW requester can create their own pending request', async () => {
     listingType: 'lend',
     ownerId: 'owner-1',
     requesterId: 'requester-1',
-    status: 'Pending',
+    requestEpoch: 0,
     startDate: '2026-12-20',
     endDate: '2026-12-22',
     pickupPreference: 'After class',
@@ -86,7 +89,7 @@ test('unverified or non-UW users cannot create requests', async () => {
     listingType: 'lend',
     ownerId: 'owner-1',
     requesterId: 'bad-user',
-    status: 'Pending',
+    requestEpoch: 0,
   }));
 
   const nonUw = testEnv.authenticatedContext('external-user', {
@@ -98,7 +101,7 @@ test('unverified or non-UW users cannot create requests', async () => {
     listingType: 'lend',
     ownerId: 'owner-1',
     requesterId: 'external-user',
-    status: 'Pending',
+    requestEpoch: 0,
   }));
 });
 
@@ -108,7 +111,7 @@ test('a requester cannot read or change another requester\'s request', async () 
       listingId: 'item-1',
       ownerId: 'owner-1',
       requesterId: 'requester-1',
-      status: 'Pending',
+      requestEpoch: 0,
     });
   });
   const other = uwContext('requester-2');
@@ -125,7 +128,7 @@ test('only the listing owner can atomically approve a borrow request and mark th
       listingType: 'lend',
       ownerId: 'owner-1',
       requesterId: 'requester-1',
-      status: 'Pending',
+      requestEpoch: 0,
     });
   });
 
@@ -143,7 +146,7 @@ test('only the listing owner can atomically approve a borrow request and mark th
     pickupLocation: 'Suzzallo Library',
   });
   batch.update(doc(owner, 'listings/item-1'), {
-    status: 'On Loan',
+    status: 'On Loan', approvalEpoch: 1,
     approvedRequestId: 'item-1_requester-1',
   });
   await assertSucceeds(batch.commit());
@@ -158,7 +161,7 @@ test('a requester can cancel their own pending request, but cannot cancel an app
       listingType: 'lend',
       ownerId: 'owner-1',
       requesterId: 'requester-1',
-      status: 'Pending',
+      requestEpoch: 0,
     });
     await setDoc(doc(db, 'requests/item-1_requester-2'), {
       listingId: 'item-1',
@@ -189,7 +192,7 @@ test('only the listing owner can decline a pending request', async () => {
       listingType: 'lend',
       ownerId: 'owner-1',
       requesterId: 'requester-1',
-      status: 'Pending',
+      requestEpoch: 0,
     });
   });
 
@@ -220,7 +223,7 @@ test('requesters cannot request their own listing or a listing that is no longer
     listingType: 'lend',
     ownerId: 'owner-1',
     requesterId: 'owner-1',
-    status: 'Pending',
+    requestEpoch: 0,
   }));
 
   const requester = uwContext('requester-1');
@@ -229,7 +232,7 @@ test('requesters cannot request their own listing or a listing that is no longer
     listingType: 'lend',
     ownerId: 'owner-1',
     requesterId: 'requester-1',
-    status: 'Pending',
+    requestEpoch: 0,
   }));
 });
 
@@ -241,14 +244,14 @@ test('approving one request declines every other pending request in the same ato
       listingType: 'lend',
       ownerId: 'owner-1',
       requesterId: 'requester-1',
-      status: 'Pending',
+      requestEpoch: 0,
     });
     await setDoc(doc(db, 'requests/item-1_requester-2'), {
       listingId: 'item-1',
       listingType: 'lend',
       ownerId: 'owner-1',
       requesterId: 'requester-2',
-      status: 'Pending',
+      requestEpoch: 0,
     });
   });
 
@@ -265,7 +268,7 @@ test('approving one request declines every other pending request in the same ato
     decidedAt: new Date(),
   });
   batch.update(doc(owner, 'listings/item-1'), {
-    status: 'On Loan',
+    status: 'On Loan', approvalEpoch: 1,
     approvedRequestId: 'item-1_requester-1',
   });
   await assertSucceeds(batch.commit());
@@ -291,7 +294,7 @@ test('purchase and giveaway approvals set their required listing statuses', asyn
         listingType: type,
         ownerId: 'owner-1',
         requesterId: 'requester-1',
-        status: 'Pending',
+        requestEpoch: 0,
       });
     });
 
@@ -304,7 +307,7 @@ test('purchase and giveaway approvals set their required listing statuses', asyn
       pickupLocation: 'Suzzallo Library',
     });
     batch.update(doc(owner, 'listings/item-1'), {
-      status: expectedStatus,
+      status: expectedStatus, approvalEpoch: 1,
       approvedRequestId: 'item-1_requester-1',
     });
     await assertSucceeds(batch.commit());
@@ -457,12 +460,12 @@ test('canceled requests can be re-submitted only with an atomic listing version 
   });
   const requester = uwContext('requester-1');
   await assertFails(updateDoc(doc(requester, 'requests/item-1_requester-1'), {
-    status: 'Pending',
+    requestEpoch: 0,
   }));
   const batch = writeBatch(requester);
   batch.update(doc(requester, 'listings/item-1'), { requestVersion: 1 });
   batch.update(doc(requester, 'requests/item-1_requester-1'), {
-    status: 'Pending', cancelledAt: null, createdAt: new Date(),
+    requestEpoch: 0, status: deleteField(), cancelledAt: null, createdAt: new Date(),
     startDate: '2026-12-20', endDate: '2026-12-22',
     pickupPreference: 'After class', purpose: 'Course project',
   });
@@ -473,7 +476,7 @@ test('borrow requests reject blank fields and invalid dates', async () => {
   const db = uwContext('requester-1');
   const valid = {
     listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
-    requesterId: 'requester-1', status: 'Pending',
+    requesterId: 'requester-1', requestEpoch: 0,
     startDate: '2026-12-20', endDate: '2026-12-22',
     pickupPreference: 'After class', purpose: 'Course project',
   };
@@ -693,7 +696,7 @@ test('a failed cancellation must not change the pending request in Firestore', a
   await testEnv.withSecurityRulesDisabled(async context => {
     await setDoc(doc(context.firestore(), 'requests/item-1_requester-1'), {
       listingId: 'item-1', listingType: 'lend', ownerId: 'owner-1',
-      requesterId: 'requester-1', status: 'Pending',
+      requesterId: 'requester-1', requestEpoch: 0,
     });
   });
   const outsider = uwContext('requester-2');
@@ -702,7 +705,7 @@ test('a failed cancellation must not change the pending request in Firestore', a
   }));
   const requester = uwContext('requester-1');
   const current = await getDoc(doc(requester, 'requests/item-1_requester-1'));
-  if (current.data().status !== 'Pending') throw new Error('Failed cancellation changed request status.');
+  if (requestStatus(current.data(), listing) !== 'Pending') throw new Error('Failed cancellation changed request status.');
 });
 
 test('giver may check a missing points record before the first pickup', async () => {
@@ -802,4 +805,211 @@ test('LS9 worker persists expiry without a page visit and is idempotent', async 
   } finally {
     await deleteApp(app);
   }
+});
+
+// LS4: a valid owner must not bypass the all-pending decision by using the SDK.
+test('LS4 rejects an approval that omits another pending request', async () => {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'listings/item-1'), { ...listing, type: 'sell' });
+    for (const uid of ['requester-1', 'requester-2']) {
+      await setDoc(doc(db, `requests/item-1_${uid}`), {
+        listingId: 'item-1', listingType: 'sell', ownerId: 'owner-1',
+        requesterId: uid, requestEpoch: 0,
+      });
+    }
+  });
+  const owner = uwContext('owner-1');
+  const batch = writeBatch(owner);
+  batch.update(doc(owner, 'requests/item-1_requester-1'), {
+    status: 'Approved', pickupDate: '2026-12-20', pickupTime: '15:00',
+    pickupLocation: 'Suzzallo Library',
+  });
+  batch.update(doc(owner, 'listings/item-1'), {
+    status: 'Sold', approvedRequestId: 'item-1_requester-1',
+  });
+  await assertFails(batch.commit());
+  equal(requestStatus((await getDoc(doc(owner, 'requests/item-1_requester-1'))).data(), listing), 'Pending');
+  equal(requestStatus((await getDoc(doc(owner, 'requests/item-1_requester-2'))).data(), listing), 'Pending');
+  equal((await getDoc(doc(owner, 'listings/item-1'))).data().status, 'Active');
+});
+
+async function seedCompetition(type = 'sell', count = 3) {
+  await testEnv.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    await setDoc(doc(db, 'listings/item-1'), { ...listing, type });
+    for (let index = 1; index <= count; index++) {
+      await setDoc(doc(db, `requests/item-1_requester-${index}`), {
+        listingId: 'item-1', listingType: type, ownerId: 'owner-1',
+        requesterId: `requester-${index}`, requestEpoch: 0, viewedByOwner: false,
+      });
+    }
+  });
+}
+
+const pickupDetails = { date: '2026-12-20', time: '15:00', location: 'Suzzallo Library' };
+
+async function readStatuses(db, count) {
+  const item = (await getDoc(doc(db, 'listings/item-1'))).data();
+  return Promise.all(Array.from({ length: count }, async (_, index) => {
+    const row = (await getDoc(doc(db, `requests/item-1_requester-${index + 1}`))).data();
+    return requestStatus(row, item);
+  }));
+}
+
+for (const type of ['sell', 'give', 'lend']) {
+  test(`LS4 real approval helper atomically decides all ${type} requests`, async () => {
+    await seedCompetition(type, 4);
+    const owner = uwContext('owner-1');
+    equal(await decideItemRequestInDatabase(owner, 'item-1_requester-2', 'owner-1', 'approve', pickupDetails), 'Approved');
+    deepEqual(await readStatuses(owner, 4), ['Declined', 'Approved', 'Declined', 'Declined']);
+    equal((await getDoc(doc(owner, 'listings/item-1'))).data().status,
+      { sell: 'Sold', give: 'Given Away', lend: 'On Loan' }[type]);
+  });
+}
+
+test('LS4 direct SDK approval seals all 60 rivals without writing their documents', async () => {
+  await seedCompetition('sell', 61);
+  const owner = uwContext('owner-1');
+  const batch = writeBatch(owner);
+  batch.update(doc(owner, 'requests/item-1_requester-1'), {
+    status: 'Approved', pickupDate: pickupDetails.date, pickupTime: pickupDetails.time,
+    pickupLocation: pickupDetails.location,
+  });
+  batch.update(doc(owner, 'listings/item-1'), {
+    status: 'Sold', approvedRequestId: 'item-1_requester-1', approvalEpoch: 1,
+  });
+  await assertSucceeds(batch.commit());
+  deepEqual(await readStatuses(owner, 61), ['Approved', ...Array(60).fill('Declined')]);
+  const rival = (await getDoc(doc(owner, 'requests/item-1_requester-2'))).data();
+  equal('status' in rival, false); // No misleading persisted Pending shadow field.
+  await assertFails(updateDoc(doc(uwContext('requester-2'), 'requests/item-1_requester-2'), { status: 'Canceled' }));
+  await assertFails(updateDoc(doc(owner, 'requests/item-1_requester-2'), { status: 'Approved' }));
+});
+
+test('LS4 concurrent approvals produce one winner and no Pending requests', async () => {
+  await seedCompetition();
+  const owner = uwContext('owner-1');
+  const results = await Promise.allSettled([1, 2].map(index =>
+    decideItemRequestInDatabase(owner, `item-1_requester-${index}`, 'owner-1', 'approve', pickupDetails)));
+  equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  const statuses = await readStatuses(owner, 3);
+  equal(statuses.filter(status => status === 'Approved').length, 1);
+  equal(statuses.filter(status => status === 'Declined').length, 2);
+});
+
+test('LS4 request submission racing approval either fails atomically or is declined', async () => {
+  await seedCompetition('sell', 1);
+  const requester = uwContext('requester-2');
+  const owner = uwContext('owner-1');
+  const submit = runTransaction(requester, async tx => {
+    const ref = doc(requester, 'listings/item-1');
+    const snap = await tx.get(ref);
+    if (snap.data().status !== 'Active') throw new Error('Unavailable');
+    tx.update(ref, { requestVersion: (snap.data().requestVersion || 0) + 1 });
+    tx.set(doc(requester, 'requests/item-1_requester-2'), {
+      listingId: 'item-1', listingType: 'sell', ownerId: 'owner-1',
+      requesterId: 'requester-2', requestEpoch: snap.data().approvalEpoch,
+    });
+  });
+  const results = await Promise.allSettled([submit,
+    decideItemRequestInDatabase(owner, 'item-1_requester-1', 'owner-1', 'approve', pickupDetails)]);
+  equal(results[1].status, 'fulfilled');
+  const rival = await getDoc(doc(owner, 'requests/item-1_requester-2'));
+  if (rival.exists()) {
+    equal(requestStatus(rival.data(), (await getDoc(doc(owner, 'listings/item-1'))).data()), 'Declined');
+  } else equal(results[0].status, 'rejected');
+});
+
+test('LS4 cancellation racing approval preserves cancellation or a single approved winner', async () => {
+  await seedCompetition();
+  const owner = uwContext('owner-1');
+  const results = await Promise.allSettled([
+    updateDoc(doc(uwContext('requester-1'), 'requests/item-1_requester-1'), { status: 'Canceled' }),
+    decideItemRequestInDatabase(owner, 'item-1_requester-1', 'owner-1', 'approve', pickupDetails),
+  ]);
+  const statuses = await readStatuses(owner, 3);
+  if (statuses[0] === 'Canceled') {
+    equal(results[1].status, 'rejected'); deepEqual(statuses, ['Canceled', 'Pending', 'Pending']);
+  } else {
+    equal(results[0].status, 'rejected'); deepEqual(statuses, ['Approved', 'Declined', 'Declined']);
+  }
+});
+
+test('LS4 rejects forged epoch changes, legacy writes and multiple winners without partial saves', async () => {
+  await seedCompetition();
+  const owner = uwContext('owner-1');
+  for (const patch of [{ approvalEpoch: 1 }, { approvalEpoch: -1 }, { requestSchemaVersion: 1 }]) {
+    await assertFails(updateDoc(doc(owner, 'listings/item-1'), patch));
+  }
+  await assertFails(deleteDoc(doc(owner, 'listings/item-1')));
+  await assertFails(updateDoc(doc(owner, 'requests/item-1_requester-2'), { requestEpoch: 1 }));
+  await assertFails(updateDoc(doc(uwContext('requester-2'), 'requests/item-1_requester-2'), { status: 'Pending' }));
+  const batch = writeBatch(owner);
+  for (const id of [1, 2]) batch.update(doc(owner, `requests/item-1_requester-${id}`), {
+    status: 'Approved', pickupDate: pickupDetails.date, pickupTime: pickupDetails.time, pickupLocation: pickupDetails.location,
+  });
+  batch.update(doc(owner, 'listings/item-1'), { status: 'Sold', approvedRequestId: 'item-1_requester-1', approvalEpoch: 1 });
+  await assertFails(batch.commit());
+  deepEqual(await readStatuses(owner, 3), ['Pending', 'Pending', 'Pending']);
+  equal((await getDoc(doc(owner, 'listings/item-1'))).data().approvalEpoch, 0);
+});
+
+test('NF9 invalid pickup and denied approval leave every request and the listing unchanged', async () => {
+  await seedCompetition();
+  const owner = uwContext('owner-1');
+  for (const patch of [{ date: '' }, { time: '' }, { location: '' }, { date: '2026-02-30' }]) {
+    await rejects(decideItemRequestInDatabase(owner, 'item-1_requester-1', 'owner-1', 'approve', { ...pickupDetails, ...patch }));
+  }
+  await rejects(decideItemRequestInDatabase(uwContext('requester-1'), 'item-1_requester-1', 'owner-1', 'approve', pickupDetails));
+  deepEqual(await readStatuses(owner, 3), ['Pending', 'Pending', 'Pending']);
+  equal((await getDoc(doc(owner, 'listings/item-1'))).data().status, 'Active');
+});
+
+test('LS4 old declines do not revive after a lending listing reopens', async () => {
+  await seedCompetition('lend');
+  const owner = uwContext('owner-1');
+  await decideItemRequestInDatabase(owner, 'item-1_requester-1', 'owner-1', 'approve', pickupDetails);
+  // The existing Received/points regression covers the legitimate reactivation write.
+  // This fixture isolates the persisted epoch across reactivation and a later cycle.
+  await testEnv.withSecurityRulesDisabled(async context => {
+    await updateDoc(doc(context.firestore(), 'listings/item-1'), { status: 'Active', approvedRequestId: null });
+  });
+  deepEqual(await readStatuses(owner, 3), ['Approved', 'Declined', 'Declined']);
+  await rejects(decideItemRequestInDatabase(owner, 'item-1_requester-2', 'owner-1', 'approve', pickupDetails));
+  const requester = uwContext('requester-2');
+  const batch = writeBatch(requester);
+  batch.update(doc(requester, 'listings/item-1'), { requestVersion: 1 });
+  batch.update(doc(requester, 'requests/item-1_requester-2'), { requestEpoch: 1 });
+  await assertFails(batch.commit());
+});
+
+test('H4 all unviewed requests remain counted after epoch approval and can still be marked viewed', async () => {
+  await seedCompetition();
+  const owner = uwContext('owner-1');
+  const unread = query(collection(owner, 'requests'), where('ownerId', '==', 'owner-1'), where('viewedByOwner', '==', false));
+  equal((await getDocs(unread)).size, 3);
+  await decideItemRequestInDatabase(owner, 'item-1_requester-1', 'owner-1', 'approve', pickupDetails);
+  equal((await getDocs(unread)).size, 3);
+  for (const row of (await getDocs(unread)).docs) await assertSucceeds(updateDoc(row.ref, { viewedByOwner: true }));
+  equal((await getDocs(unread)).size, 0);
+});
+
+test('legacy epoch migration is dry-run safe, repairs old stragglers and resumes idempotently', async () => {
+  const app = initializeAdminApp({ projectId }, 'epoch-migration');
+  try {
+    const db = getFirestore(app);
+    await db.doc('listings/item-1').set({ ...listing, requestSchemaVersion: 1, type: 'sell', status: 'Sold', approvedRequestId: 'item-1_requester-1' });
+    for (const index of [1, 2]) await db.doc(`requests/item-1_requester-${index}`).set({
+      listingId: 'item-1', listingType: 'sell', ownerId: 'owner-1', requesterId: `requester-${index}`,
+      status: index === 1 ? 'Approved' : 'Pending', viewedByOwner: false,
+    });
+    const before = (await db.doc('requests/item-1_requester-2').get()).data();
+    equal((await migrateRequestEpochs(db)).listings, 1);
+    deepEqual((await db.doc('requests/item-1_requester-2').get()).data(), before);
+    await migrateRequestEpochs(db, { apply: true });
+    deepEqual(await readStatuses(uwContext('owner-1'), 2), ['Approved', 'Declined']);
+    equal((await db.doc('requests/item-1_requester-2').get()).data().viewedByOwner, false);
+    equal((await migrateRequestEpochs(db, { apply: true })).listings, 0);
+  } finally { await deleteApp(app); }
 });

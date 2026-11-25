@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
-import { cancelItemRequest, requestIdFor } from '../data/requests';
-import { COLLECTIONS, REQUEST_STATUS } from '../data/schema';
+import { cancelItemRequest, requestIdFor, watchRequest } from '../data/requests';
+import { REQUEST_STATUS } from '../data/schema';
 import './ItemDetails.css';
 import { saveWithTimeout, userMessage } from '../data/saveWithTimeout';
 
@@ -28,11 +26,8 @@ export default function BorrowRequestStatus() {
   useEffect(() => {
     setLoading(true);
     setError('');
-    const requestRef = doc(db, COLLECTIONS.requests, requestIdFor(listingId, user.uid));
-    const unsubscribe = onSnapshot(requestRef, { includeMetadataChanges: true }, snap => {
-      // Do not show an optimistic cancellation as final while Firestore is offline.
-      if (snap.metadata.hasPendingWrites) return;
-      setRequest(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    const unsubscribe = watchRequest(requestIdFor(listingId, user.uid), row => {
+      setRequest(row);
       setLoading(false);
     }, cause => {
       console.error('Could not load borrowing request:', cause);
