@@ -1,4 +1,4 @@
-import { doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { uploadListingPhoto } from './photos';
 import { COLLECTIONS, LISTING_TYPES, PHOTO_KINDS, REQUEST_STATUS, TRANSACTION_STAGE } from './schema';
@@ -12,6 +12,17 @@ export const STAGES = [
 
 export function confirmationId(requestId, kind, uid) {
   return `${requestId}_${kind}_${uid}`;
+}
+
+// NF9 / G4.11: stamp the start on the server, then give the rules the time left
+// before the client timeout. The server start is no later than the stamp reply,
+// so the rules reject any commit that lands after the client reports a timeout.
+async function startSaveWindow(uid, deadline) {
+  const ref = doc(db, COLLECTIONS.saveAttempts, uid);
+  await setDoc(ref, { startedAt: serverTimestamp() });
+  const windowMs = Math.min(15000, Math.floor(deadline - Date.now()));
+  if (windowMs <= 0) throw new Error('Saving timed out. Check your connection.');
+  return { ref, windowMs };
 }
 
 export function isParticipant(request, uid) {
@@ -28,7 +39,7 @@ export async function getTransaction(requestId, uid) {
   return request;
 }
 
-export async function confirmExchange(requestId, uid, kind, photo, isExpired = () => false) {
+export async function confirmExchange(requestId, uid, kind, photo, isExpired = () => false, deadline = Date.now() + 15000) {
   if (![PHOTO_KINDS.pickup, PHOTO_KINDS.return].includes(kind)) {
     throw new Error('Unknown confirmation type.');
   }
@@ -56,6 +67,7 @@ export async function confirmExchange(requestId, uid, kind, photo, isExpired = (
   const otherId = current.ownerId === uid ? current.requesterId : current.ownerId;
   const otherRef = doc(db, COLLECTIONS.confirmationPhotos, confirmationId(requestId, kind, otherId));
   const listingRef = doc(db, COLLECTIONS.listings, current.listingId);
+  const saveWindow = await startSaveWindow(uid, deadline);
   await runTransaction(db, async tx => {
       const isReceivingReturn = kind === PHOTO_KINDS.return && uid === current.ownerId;
       const reads = [tx.get(requestRef), tx.get(myRef), tx.get(otherRef)];
@@ -82,6 +94,7 @@ export async function confirmExchange(requestId, uid, kind, photo, isExpired = (
       // NF9 / G4.11: after "Saving timed out", a retried transaction must not write.
       if (isExpired()) throw new Error('Saving timed out. Check your connection.');
 
+      tx.update(saveWindow.ref, { windowMs: saveWindow.windowMs, consumedAt: serverTimestamp() });
       tx.set(myRef, { requestId, userId: uid, kind, photoUrl, createdAt: serverTimestamp() });
       if (kind === PHOTO_KINDS.pickup && theirs.exists()) {
         tx.update(requestRef, { stage: TRANSACTION_STAGE.pickup });
@@ -122,8 +135,9 @@ export async function confirmExchange(requestId, uid, kind, photo, isExpired = (
 
 // S6.7–S6.9, G4.8–G4.11: for selling, the buyer marks the item as picked up.
 // For giving, the giver marks it. If anything fails, the stage stays the same.
-export async function confirmSellGivePickup(requestId, uid, isExpired = () => false) {
+export async function confirmSellGivePickup(requestId, uid, isExpired = () => false, deadline = Date.now() + 15000) {
   const requestRef = doc(db, COLLECTIONS.requests, requestId);
+  const saveWindow = await startSaveWindow(uid, deadline);
   await runTransaction(db, async tx => {
     const snap = await tx.get(requestRef);
     if (!snap.exists()) throw new Error('Request not found.');
@@ -142,6 +156,7 @@ export async function confirmSellGivePickup(requestId, uid, isExpired = () => fa
     }
     // NF9 / G4.11: after "Saving timed out", a retried transaction must not write.
     if (isExpired()) throw new Error('Saving timed out. Check your connection.');
+    tx.update(saveWindow.ref, { windowMs: saveWindow.windowMs, consumedAt: serverTimestamp() });
     if (request.listingType === LISTING_TYPES.give) {
       if (recordSnap?.exists()) throw new Error('Giveaway points were already awarded.');
       const giverUpdate = { totalPoints: (Number(giverSnap?.data()?.totalPoints) || 0) + 15, lastPointsRequestId: requestId };
