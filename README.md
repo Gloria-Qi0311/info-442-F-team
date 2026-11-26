@@ -80,6 +80,8 @@ transaction pages. We checked 16 representative page templates
 at six widths between 375px and 1440px. None of these checks
 showed horizontal scrolling.
 
-These checks cover the page states we tested. Further
-accessibility testing with Lighthouse, WAVE, and VoiceOver
-is still needed.
+These checks cover the page states we tested. We also ran
+Lighthouse, WAVE, and VoiceOver on the map, listing detail,
+account, and post pages. They reported no accessibility errors.
+The evidence for all ten nonfunctional requirements is in
+[NONFUNCTIONAL_EVIDENCE.md](NONFUNCTIONAL_EVIDENCE.md).
