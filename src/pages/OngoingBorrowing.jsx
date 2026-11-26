@@ -102,17 +102,19 @@ export default function OngoingBorrowing() {
   // when offline and stops waiting after 15 seconds.
 
   async function confirm() {
-    setBusy(true);
     setError('');
     setRetryHint('');
+    if (!photo) {
+      setError('Please upload a photo before confirming.');
+      return;
+    }
+    setBusy(true);
     try {
       await saveWithTimeout((isExpired, deadline) => confirmExchange(requestId, user.uid, action, photo, isExpired, deadline));
       navigate(action === 'return' && isOwner ? `${base}/complete` : base, { replace: true });
     } catch (cause) {
       const step = action === PHOTO_KINDS.pickup ? 'Pickup' : 'Return';
-      setError(cause.message === 'Please upload a photo.'
-        ? cause.message
-        : `${step} could not be confirmed. ${userMessage(cause, 'Please try again.')}`);
+      setError(`${step} could not be confirmed. ${userMessage(cause, 'Please try again.')}`);
       setRetryHint('Your confirmation was not completed. Check your connection and try again.');
     } finally {
       setBusy(false);
@@ -203,6 +205,7 @@ export default function OngoingBorrowing() {
                   const file = event.target.files?.[0] || null;
                   const validationError = file ? checkPhotoFile(file) : '';
                   setError(validationError);
+                  setRetryHint('');
                   setPhoto(validationError ? null : file);
                   setPreview(file && !validationError ? URL.createObjectURL(file) : '');
                 }} />
